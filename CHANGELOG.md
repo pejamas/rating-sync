@@ -6,4 +6,8 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+- TBD
+
+## [1.0.0] - 2026-01-07
+
 - Initial public release.

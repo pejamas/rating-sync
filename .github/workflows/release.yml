@@ -66,6 +66,7 @@ jobs:
           $version = "${{ steps.ver.outputs.version }}"
           $isPrerelease = $version.Contains('-')
           $channel = if ($isPrerelease) { "Beta" } else { "Release" }
+          $changes = if ($isPrerelease) { "Initial public beta." } else { "Initial public release." }
 
           @"
           # Rating Sync $tag ($channel)
@@ -87,7 +88,7 @@ jobs:
           - See the README for details.
 
           ## Changes
-          - Initial public beta.
+          - $changes
           "@ | Out-File -FilePath "release-notes.md" -Encoding utf8
 
       - name: Publish GitHub Release

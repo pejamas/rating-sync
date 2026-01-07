@@ -1,5 +1,5 @@
 <p align="center">
-	<img src="images/logo.jpg" alt="Rating Sync logo" width="160" />
+	<img src="images/logo.jpg" alt="Rating Sync logo" width="320" />
 </p>
 
 <h1 align="center">Rating Sync</h1>
