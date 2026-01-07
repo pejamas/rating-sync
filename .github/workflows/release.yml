@@ -26,7 +26,19 @@ jobs:
         run: |
           $tag = "${{ github.ref_name }}"
           $version = $tag.TrimStart('v')
+
+          # Split SemVer into prefix and optional prerelease suffix.
+          # Example: 0.1.0-beta.1 => prefix=0.1.0, suffix=beta.1
+          $prefix = $version
+          $suffix = ""
+          if ($version -match '^(?<p>[^-]+)-(?<s>.+)$') {
+            $prefix = $Matches['p']
+            $suffix = $Matches['s']
+          }
+
           "version=$version" >> $env:GITHUB_OUTPUT
+          "prefix=$prefix" >> $env:GITHUB_OUTPUT
+          "suffix=$suffix" >> $env:GITHUB_OUTPUT
           "tag=$tag" >> $env:GITHUB_OUTPUT
 
       - name: Restore
@@ -35,7 +47,7 @@ jobs:
       - name: Build (Release)
         shell: pwsh
         run: |
-          dotnet build -c Release --no-restore -p:Version="${{ steps.ver.outputs.version }}"
+          dotnet build -c Release --no-restore -p:VersionPrefix="${{ steps.ver.outputs.prefix }}" -p:VersionSuffix="${{ steps.ver.outputs.suffix }}"
 
       - name: Package
         shell: pwsh
@@ -51,6 +63,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
+          prerelease: ${{ contains(steps.ver.outputs.version, '-') }}
           files: |
             bin/Release/RatingSync.dll
             RatingSync-${{ steps.ver.outputs.tag }}.zip

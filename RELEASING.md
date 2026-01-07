@@ -18,6 +18,15 @@ git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
+### Beta / prerelease tags
+
+For beta builds, use a SemVer prerelease tag:
+
+```powershell
+git tag vX.Y.Z-beta.1
+git push origin vX.Y.Z-beta.1
+```
+
 GitHub Actions will build and publish a GitHub Release with:
 - `RatingSync.dll`
 - `RatingSync-vX.Y.Z.zip`
