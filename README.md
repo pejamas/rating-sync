@@ -1,10 +1,28 @@
-# Rating Sync (Emby plugin)
+<p align="center">
+	<img src="images/logo.jpg" alt="Rating Sync logo" width="160" />
+</p>
 
-[![CI](https://github.com/pejamas/rating-sync/actions/workflows/ci.yml/badge.svg)](https://github.com/pejamas/rating-sync/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/pejamas/rating-sync?include_prereleases=true&sort=semver)](https://github.com/pejamas/rating-sync/releases)
-[![License](https://img.shields.io/github/license/pejamas/rating-sync)](LICENSE)
+<h1 align="center">Rating Sync</h1>
 
-Sync **IMDb community ratings** and **Rotten Tomatoes critic ratings** into Emby metadata, with smart scanning, rate limiting, progress tracking, and scan history.
+<p align="center">
+	An Emby plugin to sync <b>IMDb community ratings</b> and <b>Rotten Tomatoes critic ratings</b> into your library metadata.
+	<br />
+	Smart scanning • Rate limiting • Progress tracking • Scan history
+</p>
+
+<p align="center">
+	<a href="#features">Features</a> •
+	<a href="#install">Install</a> •
+	<a href="#quick-start">Quick start</a> •
+	<a href="#ui-tour">Screenshots</a> •
+	<a href="https://github.com/pejamas/rating-sync/releases">Download</a>
+</p>
+
+<p align="center">
+	<a href="https://github.com/pejamas/rating-sync/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pejamas/rating-sync/actions/workflows/ci.yml/badge.svg" /></a>
+	<a href="https://github.com/pejamas/rating-sync/releases"><img alt="Tag" src="https://img.shields.io/github/v/tag/pejamas/rating-sync?sort=semver" /></a>
+	<a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/pejamas/rating-sync" /></a>
+</p>
 
 ## Features
 
