@@ -59,12 +59,44 @@ jobs:
           if (Test-Path $zip) { Remove-Item $zip -Force }
           Compress-Archive -Path $dll -DestinationPath $zip
 
+      - name: Generate release notes
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.ver.outputs.tag }}"
+          $version = "${{ steps.ver.outputs.version }}"
+          $isPrerelease = $version.Contains('-')
+          $channel = if ($isPrerelease) { "Beta" } else { "Release" }
+
+          @"
+          # Rating Sync $tag ($channel)
+
+          This is a **$channel** build of the Rating Sync plugin for Emby.
+
+          ## What it does
+          - Syncs **IMDb community rating** and **Rotten Tomatoes critic rating** for Movies/Series (and optionally Episodes)
+          - Supports **OMDb** and/or **MDBList** with rate limiting and scan history
+
+          ## Install
+          1. Download `RatingSync.dll` (or the zip) from Assets below.
+          2. Copy `RatingSync.dll` into your Emby plugins folder.
+          3. Restart Emby Server.
+          4. Configure API keys in Emby Dashboard → Plugins → Rating Sync.
+
+          ## Notes
+          - **Beta builds** may change behavior/config defaults; please report issues.
+          - See the README for details.
+
+          ## Changes
+          - Initial public beta.
+          "@ | Out-File -FilePath "release-notes.md" -Encoding utf8
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          name: Rating Sync ${{ steps.ver.outputs.tag }}
           tag_name: ${{ steps.ver.outputs.tag }}
           prerelease: ${{ contains(steps.ver.outputs.version, '-') }}
+          body_path: release-notes.md
           files: |
             bin/Release/RatingSync.dll
             RatingSync-${{ steps.ver.outputs.tag }}.zip
-          generate_release_notes: true
