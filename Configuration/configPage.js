@@ -94,7 +94,7 @@ function (BaseView, loading, toast) {
                 mdbText = 'MDBList: ' + (data.MdbListUsed || 0) + (data.MdbListRateLimitEnabled && data.MdbListLimit ? ('/' + data.MdbListLimit) : '');
             }
 
-            var imdbText = 'IMDb scrapes: ' + (data.ImdbScrapesUsed || 0);
+            var imdbText = 'IMDb API: ' + (data.ImdbScrapesUsed || 0);
 
             var html = '';
             if (todayLabel) {
@@ -1447,7 +1447,7 @@ function (BaseView, loading, toast) {
             html += self.reportMetaBox('Errors', String(src.ErrorItems || 0));
             html += self.reportMetaBox('OMDb calls', String(src.OmdbRequests || 0));
             html += self.reportMetaBox('MDBList calls', String(src.MdbListRequests || 0));
-            html += self.reportMetaBox('IMDb scrapes', String(src.ImdbScrapeRequests || 0));
+            html += self.reportMetaBox('IMDb API calls', String(src.ImdbScrapeRequests || 0));
             html += self.reportMetaBox('Status', statusText);
             html += '</div>';
 
@@ -1573,8 +1573,8 @@ function (BaseView, loading, toast) {
             var updatedBySource = {};
             (updatedEntries || []).forEach(function(e) {
                 var d = e && e.detail ? e.detail : '';
-                var hasImdb = d.indexOf('IMDb:') >= 0;
-                var hasRt = d.indexOf('RT:') >= 0;
+                var hasImdb = d.indexOf('IMDb community') >= 0 || d.indexOf('IMDb:') >= 0;
+                var hasRt = d.indexOf('RT critic') >= 0 || d.indexOf('RT:') >= 0;
                 var type = hasImdb && hasRt ? 'IMDb + RT' : (hasImdb ? 'IMDb only' : (hasRt ? 'RT only' : 'Other'));
                 inc(updatedByType, type);
 
