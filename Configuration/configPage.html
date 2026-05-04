@@ -304,10 +304,10 @@
                         
                         <label class="checkboxContainer" style="margin-top: 1em;">
                             <input type="checkbox" is="emby-checkbox" id="chkEnableImdbScraping" />
-                            <span>Enable IMDb Scraping (Episode Fallback)</span>
+                            <span>Use IMDb unofficial API (imdbapi.dev) when primary APIs return no community rating</span>
                         </label>
-                        <div class="noteBox" style="margin-top: 0.5em;">
-                            <strong>⚠️ Warning:</strong> When OMDb doesn't have an episode rating, this will scrape IMDb directly. Use sparingly - excessive scraping may get your IP blocked by IMDb. Only applies to episodes.
+                        <div class="fieldDescription" style="margin-top: 0.5em;">
+                            Uses the free <a href="https://api.imdbapi.dev" target="_blank" rel="noopener noreferrer">imdbapi.dev</a> mirror (no API key). Applies to TV episodes, movies, and series when OMDb or MDBList have no IMDb community score yet.
                         </div>
                     </div>
 

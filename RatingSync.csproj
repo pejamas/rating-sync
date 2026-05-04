@@ -10,7 +10,7 @@
       - AssemblyVersion/FileVersion must be numeric.
       - InformationalVersion can include prerelease identifiers.
     -->
-    <VersionPrefix>1.0.2</VersionPrefix>
+    <VersionPrefix>1.0.3</VersionPrefix>
     <VersionSuffix></VersionSuffix>
     <AssemblyVersion>$(VersionPrefix).0</AssemblyVersion>
     <FileVersion>$(VersionPrefix).0</FileVersion>

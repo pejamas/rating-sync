@@ -62,11 +62,10 @@ jobs:
       - name: Generate release notes
         shell: pwsh
         run: |
-          $tag = "${{ steps.ver.outputs.tag }}"
           $version = "${{ steps.ver.outputs.version }}"
           $isPrerelease = $version.Contains('-')
-          $channel = if ($isPrerelease) { "Beta" } else { "Release" }
 
+          # Release body = only the bullet list under ## [version] in CHANGELOG.md (no boilerplate).
           $changesBlock = ""
           $changelogPath = Join-Path $PWD "CHANGELOG.md"
           if (Test-Path $changelogPath) {
@@ -85,39 +84,20 @@ jobs:
               }
               $trimmed = $body | Where-Object { $_ -and $_.Trim() -ne '' }
               if ($trimmed.Count -gt 0) {
-                $changesBlock = ($trimmed -join "`n")
+                $changesBlock = ($trimmed -join "`n").TrimEnd()
               }
             }
           }
 
           if ([string]::IsNullOrWhiteSpace($changesBlock)) {
-            $changesBlock = "- See CHANGELOG.md for details."
+            $changesBlock = "- No CHANGELOG section found for this version; see [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)."
           }
 
-          $notesExtra = if ($isPrerelease) { "- **Beta builds** may change behavior/config defaults; please report issues." } else { "" }
+          if ($isPrerelease) {
+            $changesBlock = "_Prerelease — behavior may change._`n`n" + $changesBlock
+          }
 
-          @"
-          # Rating Sync $tag ($channel)
-
-          This is a **$channel** build of the Rating Sync plugin for Emby.
-
-          ## What it does
-          - Syncs **IMDb community rating** and **Rotten Tomatoes critic rating** for Movies/Series (and optionally Episodes)
-          - Supports **OMDb** and/or **MDBList** with rate limiting and scan history
-
-          ## Install
-          1. Download `RatingSync.dll` (or the zip) from Assets below.
-          2. Copy `RatingSync.dll` into your Emby plugins folder.
-          3. Restart Emby Server.
-          4. Configure API keys in Emby Dashboard → Plugins → Rating Sync.
-
-          ## Notes
-          $notesExtra
-          - See the README for details.
-
-          ## Changes
-          $changesBlock
-          "@ | Out-File -FilePath "release-notes.md" -Encoding utf8
+          $changesBlock | Out-File -FilePath "release-notes.md" -Encoding utf8NoBOM
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2

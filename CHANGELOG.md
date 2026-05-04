@@ -6,7 +6,12 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
-- TBD
+## [1.0.3] - 2026-05-04
+
+- Fix: IMDb unofficial API (`api.imdbapi.dev`) — normalize `tt` IDs from URLs or digit-only ids; use `?season=` for episode lists (avoid ambiguous `seasonNumber=`); resolve duplicate episode rows by vote count; when a season list row has no score, try the episode title endpoint (without duplicating a GET already done for Emby’s episode IMDb id).
+- Improvement: Clearer scan skip/update messages (which sources were consulted; distinguish IMDb unofficial API from imdb.com last-resort).
+- UI: Plugin settings describe the imdbapi.dev mirror without scrape warnings; dashboard shows **IMDb API** usage and reports show **IMDb API calls**.
+- CI: GitHub Releases now use the **Changes** section from `CHANGELOG.md` for that tag only (no extra boilerplate in the release description).
 
 ## [1.0.2] - 2026-03-25
 

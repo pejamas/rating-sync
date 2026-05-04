@@ -1008,7 +1008,7 @@ namespace RatingSync
         public bool UpdateSeries { get; set; }
         public bool UpdateEpisodes { get; set; }
         
-        // Episode Scraping Fallback
+        // IMDb unofficial API (imdbapi.dev) + optional imdb.com last resort; persisted key name unchanged.
         public bool EnableImdbScraping { get; set; }
         
         // Smart Scanning
@@ -1595,6 +1595,26 @@ namespace RatingSync
         private static readonly object _imdbEpisodeCacheLock = new object();
         private static readonly Dictionary<string, Dictionary<int, string>> _imdbEpisodeIdCache = new Dictionary<string, Dictionary<int, string>>();
 
+        /// <summary>
+        /// api.imdbapi.dev requires a tt-prefixed tconst; bare digits return HTTP 400.
+        /// Also accepts full imdb.com URLs sometimes stored in provider ids.
+        /// </summary>
+        private static string NormalizeImdbTconst(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+                return null;
+            var s = raw.Trim();
+            var m = System.Text.RegularExpressions.Regex.Match(
+                s,
+                @"\b(tt\d{7,10})\b",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (m.Success)
+                return m.Groups[1].Value;
+            if (System.Text.RegularExpressions.Regex.IsMatch(s, @"^\d{7,10}$"))
+                return "tt" + s;
+            return null;
+        }
+
         public RatingRefreshTask(ILibraryManager libraryManager, ILogManager logManager, IJsonSerializer jsonSerializer)
         {
             _libraryManager = libraryManager;
@@ -1852,8 +1872,8 @@ namespace RatingSync
                         {
                             skipped++;
                             processed++;
-                            ProgressTracker.AddSkipped(item.Name, "Missing season/episode info");
-                            Log($"⊘ Skipped '{item.Name}' - missing season/episode info", "skip");
+                            ProgressTracker.AddSkipped(item.Name, "Skipped episode, missing season or episode index in library metadata");
+                            Log($"⊘ Skipped '{item.Name}' — missing season/episode index", "skip");
                             ProgressTracker.UpdateProgress(processed, updated, skipped, errors, itemName);
                             continue;
                         }
@@ -1887,10 +1907,14 @@ namespace RatingSync
                             ScanHistoryManager.IncrementImdbScrapeCount();
                         }
 
-                        // Determine source label for display
+                        // Determine source label for display (UI + scan history)
                         string sourceLabel;
-                        if (ratings.UsedScraping)
-                            sourceLabel = "Scraped";
+                        if (ratings.UsedImdbApiDev && ratings.UsedScraping)
+                            sourceLabel = "IMDb unofficial API + imdb.com fallback";
+                        else if (ratings.UsedImdbApiDev)
+                            sourceLabel = "IMDb unofficial API";
+                        else if (ratings.UsedScraping)
+                            sourceLabel = "imdb.com fallback";
                         else if (ratings.UsedOmdb && ratings.UsedMdbList)
                             sourceLabel = "OMDb+MDB";
                         else if (ratings.UsedOmdb)
@@ -1910,7 +1934,7 @@ namespace RatingSync
                             {
                                 item.CommunityRating = ratings.CommunityRating.Value;
                                 itemUpdated = true;
-                                changes.Add($"IMDb: {(oldRating.HasValue ? oldRating.Value.ToString("F1") : "none")} → {ratings.CommunityRating.Value:F1} ({sourceLabel})");
+                                changes.Add($"IMDb community {(oldRating.HasValue ? oldRating.Value.ToString("F1") : "none")} → {ratings.CommunityRating.Value:F1} ({sourceLabel})");
                             }
                         }
 
@@ -1923,7 +1947,7 @@ namespace RatingSync
                                 itemUpdated = true;
                                 // RT usually comes from MDBList when using both
                                 var rtSource = ratings.UsedMdbList ? "MDBList" : sourceLabel;
-                                changes.Add($"RT: {(oldCriticRating.HasValue ? oldCriticRating.Value.ToString("F0") + "%" : "none")} → {ratings.CriticRating.Value:F0}% ({rtSource})");
+                                changes.Add($"RT critic {(oldCriticRating.HasValue ? oldCriticRating.Value.ToString("F0") + "%" : "none")} → {ratings.CriticRating.Value:F0}% ({rtSource})");
                             }
                         }
 
@@ -1942,34 +1966,16 @@ namespace RatingSync
                         else
                         {
                             skipped++;
-                            // Build detailed skip reason
-                            var skipReasons = new List<string>();
-                            if (!ratings.CommunityRating.HasValue && !ratings.CriticRating.HasValue)
-                            {
-                                skipReasons.Add("No ratings found from API");
-                            }
-                            else
-                            {
-                                if (ratings.CommunityRating.HasValue && item.CommunityRating == ratings.CommunityRating.Value)
-                                {
-                                    skipReasons.Add($"IMDb unchanged ({item.CommunityRating:F1})");
-                                }
-                                if (config.UpdateCriticRating && ratings.CriticRating.HasValue && item.CriticRating == ratings.CriticRating.Value)
-                                {
-                                    skipReasons.Add($"RT unchanged ({item.CriticRating:F0}%)");
-                                }
-                                if (!ratings.CommunityRating.HasValue)
-                                {
-                                    skipReasons.Add("No IMDb rating in API");
-                                }
-                                if (config.UpdateCriticRating && !ratings.CriticRating.HasValue)
-                                {
-                                    skipReasons.Add("No RT rating in API");
-                                }
-                            }
-                            var skipReason = skipReasons.Count > 0 ? string.Join(", ", skipReasons) : "No changes needed";
+                            var skipReason = BuildSkippedItemSummary(
+                                ratings,
+                                config,
+                                episodeInfo,
+                                currentHasOmdb,
+                                currentHasMdbList,
+                                item.CommunityRating,
+                                item.CriticRating);
                             ProgressTracker.AddSkipped(itemName, skipReason);
-                            Log($"⊘ Skipped '{itemName}' - {skipReason}", "skip");
+                            Log($"⊘ Skipped '{itemName}' — {skipReason}", "skip");
                         }
 
                         processed++;
@@ -2102,23 +2108,30 @@ namespace RatingSync
                     if (!string.IsNullOrWhiteSpace(imdbId))
                     {
                         // Prefer querying the episode's own tt-id directly.
+                        result.AttemptedImdbApiDev = true;
                         apiRating = await FetchImdbApiDevRating(imdbId);
                     }
 
                     if (!apiRating.HasValue && !string.IsNullOrWhiteSpace(episodeInfo.SeriesImdbId))
                     {
+                        result.AttemptedImdbApiDev = true;
                         // Fall back to the season list endpoint to find this episode.
-                        apiRating = await FetchImdbApiDevEpisodeRating(episodeInfo.SeriesImdbId, episodeInfo.SeasonNumber, episodeInfo.EpisodeNumber);
+                        apiRating = await FetchImdbApiDevEpisodeRating(
+                            episodeInfo.SeriesImdbId,
+                            episodeInfo.SeasonNumber,
+                            episodeInfo.EpisodeNumber,
+                            NormalizeImdbTconst(imdbId));
                     }
 
                     if (apiRating.HasValue)
                     {
                         result.CommunityRating = apiRating;
-                        result.UsedScraping = true;
+                        result.UsedImdbApiDev = true;
                     }
                     else
                     {
                         // Last resort: try direct HTML scraping (may be blocked by WAF).
+                        result.AttemptedHtmlScrape = true;
                         float? scrapedRating = null;
                         if (!string.IsNullOrWhiteSpace(imdbId))
                             scrapedRating = await ScrapeImdbRating(imdbId);
@@ -2210,15 +2223,17 @@ namespace RatingSync
             // and the configured sources still haven't returned a community rating.
             if (!result.CommunityRating.HasValue && config.EnableImdbScraping && !string.IsNullOrWhiteSpace(imdbId))
             {
+                result.AttemptedImdbApiDev = true;
                 var apiRating = await FetchImdbApiDevRating(imdbId);
                 if (apiRating.HasValue)
                 {
                     result.CommunityRating = apiRating;
-                    result.UsedScraping = true;
+                    result.UsedImdbApiDev = true;
                 }
                 else
                 {
                     // Last resort: direct HTML scrape (may be blocked by WAF).
+                    result.AttemptedHtmlScrape = true;
                     var scrapedRating = await ScrapeImdbRating(imdbId);
                     if (scrapedRating.HasValue)
                     {
@@ -2229,6 +2244,94 @@ namespace RatingSync
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Short list of which backends were actually queried (for skip / log messages).
+        /// </summary>
+        private static string DescribeConsultedSources(
+            RatingData r,
+            PluginConfiguration config,
+            EpisodeInfo episodeInfo,
+            bool canUseOmdb,
+            bool canUseMdbList)
+        {
+            var parts = new List<string>();
+            if (episodeInfo != null)
+            {
+                if (canUseOmdb && !string.IsNullOrEmpty(config.OmdbApiKey))
+                    parts.Add("OMDb");
+                if (r.ImdbScrapeAttempted)
+                {
+                    if (r.AttemptedImdbApiDev)
+                        parts.Add("IMDb unofficial API (imdbapi.dev)");
+                    if (r.AttemptedHtmlScrape)
+                        parts.Add("imdb.com (last resort)");
+                }
+                else if (!config.EnableImdbScraping)
+                    parts.Add("IMDb unofficial API disabled in plugin settings");
+            }
+            else
+            {
+                if (r.UsedOmdb)
+                    parts.Add("OMDb");
+                if (r.UsedMdbList)
+                    parts.Add("MDBList");
+                if (r.AttemptedImdbApiDev)
+                    parts.Add("IMDb unofficial API (imdbapi.dev)");
+                if (r.AttemptedHtmlScrape)
+                    parts.Add("imdb.com (last resort)");
+                if (parts.Count == 0)
+                    parts.Add("no sources ran (missing API keys, limits, or IMDb id)");
+            }
+
+            return string.Join(", ", parts);
+        }
+
+        /// <summary>
+        /// User-facing explanation when an item was not updated (library vs API outcome).
+        /// </summary>
+        private static string BuildSkippedItemSummary(
+            RatingData ratings,
+            PluginConfiguration config,
+            EpisodeInfo episodeInfo,
+            bool canUseOmdb,
+            bool canUseMdbList,
+            float? libraryCommunity,
+            float? libraryCritic)
+        {
+            var consulted = DescribeConsultedSources(ratings, config, episodeInfo, canUseOmdb, canUseMdbList);
+            var wantsRt = config.UpdateCriticRating;
+            var apiImdb = ratings.CommunityRating;
+            var apiRt = ratings.CriticRating;
+            var hasAnyApi = apiImdb.HasValue || apiRt.HasValue;
+
+            if (!hasAnyApi)
+            {
+                if (episodeInfo != null && !config.EnableImdbScraping && (!canUseOmdb || string.IsNullOrEmpty(config.OmdbApiKey)))
+                    return $"No scores available, consulted {consulted}. Add an OMDb key or enable IMDb unofficial API for episode IMDb ratings.";
+
+                return $"No scores available, consulted {consulted}. Sources returned no usable IMDb or RT data for this item (new or unrated episodes are common).";
+            }
+
+            var segments = new List<string>();
+            if (apiImdb.HasValue && libraryCommunity.HasValue && Math.Abs(apiImdb.Value - libraryCommunity.Value) < 0.001f)
+                segments.Add($"IMDb community already matches library ({libraryCommunity.Value:F1})");
+            else if (!apiImdb.HasValue)
+                segments.Add("IMDb community score not returned by consulted sources");
+
+            if (wantsRt)
+            {
+                if (apiRt.HasValue && libraryCritic.HasValue && Math.Abs(apiRt.Value - libraryCritic.Value) < 0.001f)
+                    segments.Add($"RT critic already matches library ({libraryCritic.Value:F0}%)");
+                else if (!apiRt.HasValue)
+                    segments.Add("RT critic score not returned by consulted sources");
+            }
+
+            if (segments.Count == 0)
+                return "No changes needed, consulted " + consulted;
+
+            return "Already up to date, " + string.Join("; ", segments);
         }
 
         private async Task<RatingData> FetchFromOmdb(string imdbId, string apiKey, EpisodeInfo episodeInfo = null)
@@ -2394,12 +2497,14 @@ namespace RatingSync
         {
             try
             {
+                imdbId = NormalizeImdbTconst(imdbId);
                 if (string.IsNullOrWhiteSpace(imdbId))
                     return null;
 
                 using (var client = new HttpClient())
                 {
                     client.Timeout = TimeSpan.FromSeconds(10);
+                    client.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json");
                     var url = $"https://api.imdbapi.dev/titles/{imdbId}";
                     var response = await client.GetAsync(url);
                     if (!response.IsSuccessStatusCode)
@@ -2416,17 +2521,25 @@ namespace RatingSync
         }
 
         // Fetch an episode's IMDb rating via the season-episode list endpoint on api.imdbapi.dev.
-        // Used when Emby doesn't supply an episode-level IMDb ID.
-        private async Task<float?> FetchImdbApiDevEpisodeRating(string seriesImdbId, int seasonNumber, int episodeNumber)
+        // Used when Emby doesn't supply an episode-level IMDb ID, or when the direct title lookup had no rating.
+        // alreadyTriedEpisodeTconst: avoid a redundant GET when FetchRatings already called FetchImdbApiDevRating(imdbId).
+        private async Task<float?> FetchImdbApiDevEpisodeRating(
+            string seriesImdbId,
+            int seasonNumber,
+            int episodeNumber,
+            string alreadyTriedEpisodeTconst = null)
         {
             try
             {
+                seriesImdbId = NormalizeImdbTconst(seriesImdbId);
                 if (string.IsNullOrWhiteSpace(seriesImdbId) || seasonNumber <= 0 || episodeNumber <= 0)
                     return null;
 
                 using (var client = new HttpClient())
                 {
                     client.Timeout = TimeSpan.FromSeconds(10);
+                    client.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json");
+                    // Use ?season= (not seasonNumber=): the latter can match multiple seasons on the API.
                     var url = $"https://api.imdbapi.dev/titles/{seriesImdbId}/episodes?season={seasonNumber}";
                     var response = await client.GetAsync(url);
                     if (!response.IsSuccessStatusCode)
@@ -2434,9 +2547,24 @@ namespace RatingSync
 
                     var body = await response.Content.ReadAsStringAsync();
                     var data = _jsonSerializer.DeserializeFromString<ImdbApiDevEpisodesResponse>(body);
-                    var ep = data?.episodes?.FirstOrDefault(e => e.episodeNumber == episodeNumber);
+                    // If the API returns duplicate episode indices, prefer the row with more votes.
+                    // (Some seasons include extras without episodeNumber; those never match here.)
+                    var ep = data?.episodes?
+                        .Where(e => e.episodeNumber == episodeNumber)
+                        .OrderByDescending(e => e.rating?.voteCount ?? 0)
+                        .FirstOrDefault();
                     if (ep?.rating?.aggregateRating.HasValue == true && ep.rating.aggregateRating.Value >= 1)
                         return ep.rating.aggregateRating.Value;
+                    // Season list sometimes omits rating while GET /titles/{episodeId} includes it.
+                    var epNorm = NormalizeImdbTconst(ep?.id);
+                    var triedNorm = NormalizeImdbTconst(alreadyTriedEpisodeTconst);
+                    if (!string.IsNullOrWhiteSpace(epNorm)
+                        && !string.Equals(epNorm, triedNorm, StringComparison.OrdinalIgnoreCase))
+                    {
+                        var byEpisodeId = await FetchImdbApiDevRating(ep.id);
+                        if (byEpisodeId.HasValue)
+                            return byEpisodeId;
+                    }
                 }
             }
             catch { }
@@ -2688,7 +2816,11 @@ namespace RatingSync
             public float? CriticRating { get; set; }
             public bool UsedOmdb { get; set; }
             public bool UsedMdbList { get; set; }
+            /// <summary>True when the score came from a direct imdb.com page request (last resort, not imdbapi.dev).</summary>
             public bool UsedScraping { get; set; }
+            public bool UsedImdbApiDev { get; set; }
+            public bool AttemptedImdbApiDev { get; set; }
+            public bool AttemptedHtmlScrape { get; set; }
             public bool ImdbScrapeAttempted { get; set; }
         }
 
