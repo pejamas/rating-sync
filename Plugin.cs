@@ -17,11 +17,15 @@ using MediaBrowser.Common.Plugins;
 using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -946,6 +950,7 @@ namespace RatingSync
             Instance = this;
             // Initialize scan history with plugin data path
             ScanHistoryManager.Initialize(applicationPaths.PluginConfigurationsPath);
+            ImdbDatasetStore.Initialize(applicationPaths.PluginConfigurationsPath);
         }
 
         public override string Name => "Rating Sync";
@@ -1008,7 +1013,7 @@ namespace RatingSync
         public bool UpdateSeries { get; set; }
         public bool UpdateEpisodes { get; set; }
         
-        // IMDb unofficial API (imdbapi.dev) + optional imdb.com last resort; persisted key name unchanged.
+        // IMDb ratings fallback (official datasets + optional page lookup). Persisted key name unchanged.
         public bool EnableImdbScraping { get; set; }
         
         // Smart Scanning
@@ -1584,6 +1589,378 @@ namespace RatingSync
 
     #endregion
 
+    #region IMDb official datasets (ratings fallback)
+
+    /// <summary>
+    /// Looks up IMDb community ratings from IMDb's free non-commercial datasets
+    /// (https://datasets.imdbws.com/). Used when OMDb/MDBList have no score and
+    /// direct imdb.com HTML is blocked by bot protection.
+    /// </summary>
+    public static class ImdbDatasetStore
+    {
+        private static readonly object Sync = new object();
+        private static readonly object EpisodeScanSync = new object();
+        private static readonly Dictionary<string, Dictionary<int, string>> EpisodeMaps =
+            new Dictionary<string, Dictionary<int, string>>(StringComparer.OrdinalIgnoreCase);
+
+        private static string _dir;
+        private static string RatingsTsvPath => Path.Combine(_dir ?? "", "title.ratings.tsv");
+        private static string EpisodesTsvPath => Path.Combine(_dir ?? "", "title.episode.tsv");
+
+        private static readonly TimeSpan MaxAge = TimeSpan.FromHours(24);
+
+        public static void Initialize(string pluginConfigurationsPath)
+        {
+            if (string.IsNullOrWhiteSpace(pluginConfigurationsPath))
+                return;
+            _dir = Path.Combine(pluginConfigurationsPath, "RatingSync", "imdb-datasets");
+            try
+            {
+                Directory.CreateDirectory(_dir);
+            }
+            catch
+            {
+                // ignore; lookups will no-op if path unusable
+            }
+        }
+
+        public static async Task EnsureRatingsReadyAsync(ILogger logger = null)
+        {
+            await EnsureFileAsync(
+                "https://datasets.imdbws.com/title.ratings.tsv.gz",
+                RatingsTsvPath,
+                "IMDb ratings dataset",
+                logger).ConfigureAwait(false);
+        }
+
+        public static async Task EnsureEpisodesReadyAsync(ILogger logger = null)
+        {
+            await EnsureFileAsync(
+                "https://datasets.imdbws.com/title.episode.tsv.gz",
+                EpisodesTsvPath,
+                "IMDb episode index dataset",
+                logger).ConfigureAwait(false);
+        }
+
+        public static float? TryGetRating(string imdbId)
+        {
+            imdbId = NormalizeTconst(imdbId);
+            if (string.IsNullOrWhiteSpace(imdbId) || string.IsNullOrWhiteSpace(_dir))
+                return null;
+
+            var path = RatingsTsvPath;
+            if (!File.Exists(path))
+                return null;
+
+            try
+            {
+                return BinarySearchRating(path, imdbId);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Resolve episode tconst from title.episode.tsv for a series season.
+        /// Scans the file once per series and caches all seasons for that parent.
+        /// </summary>
+        public static async Task<string> TryResolveEpisodeIdAsync(
+            string seriesImdbId,
+            int seasonNumber,
+            int episodeNumber,
+            ILogger logger = null)
+        {
+            seriesImdbId = NormalizeTconst(seriesImdbId);
+            if (string.IsNullOrWhiteSpace(seriesImdbId) || seasonNumber <= 0 || episodeNumber <= 0)
+                return null;
+
+            var cacheKey = seriesImdbId + "|S" + seasonNumber;
+            lock (EpisodeScanSync)
+            {
+                if (EpisodeMaps.TryGetValue(cacheKey, out var cached)
+                    && cached != null
+                    && cached.TryGetValue(episodeNumber, out var hit)
+                    && !string.IsNullOrWhiteSpace(hit))
+                {
+                    return hit;
+                }
+            }
+
+            await EnsureEpisodesReadyAsync(logger).ConfigureAwait(false);
+            if (!File.Exists(EpisodesTsvPath))
+                return null;
+
+            try
+            {
+                // One pass: cache every season for this parent series.
+                var bySeason = new Dictionary<int, Dictionary<int, string>>();
+                using (var reader = new StreamReader(EpisodesTsvPath, Encoding.UTF8))
+                {
+                    string line;
+                    var headerSkipped = false;
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        if (!headerSkipped)
+                        {
+                            headerSkipped = true;
+                            continue;
+                        }
+                        // tconst \t parentTconst \t seasonNumber \t episodeNumber
+                        var parts = line.Split('\t');
+                        if (parts.Length < 4)
+                            continue;
+                        if (!string.Equals(parts[1], seriesImdbId, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        if (!int.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out var season))
+                            continue;
+                        if (!int.TryParse(parts[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out var epNum))
+                            continue;
+                        if (season <= 0 || epNum <= 0 || string.IsNullOrWhiteSpace(parts[0]))
+                            continue;
+                        if (!bySeason.TryGetValue(season, out var map))
+                        {
+                            map = new Dictionary<int, string>();
+                            bySeason[season] = map;
+                        }
+                        map[epNum] = parts[0];
+                    }
+                }
+
+                lock (EpisodeScanSync)
+                {
+                    if (EpisodeMaps.Count > 500)
+                        EpisodeMaps.Clear();
+                    foreach (var kv in bySeason)
+                        EpisodeMaps[seriesImdbId + "|S" + kv.Key] = kv.Value;
+
+                    if (EpisodeMaps.TryGetValue(cacheKey, out var seasonMap)
+                        && seasonMap.TryGetValue(episodeNumber, out var found))
+                        return found;
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.Info("IMDb episode dataset lookup failed: " + ex.Message);
+            }
+
+            return null;
+        }
+
+        private static async Task EnsureFileAsync(string url, string tsvPath, string label, ILogger logger)
+        {
+            if (string.IsNullOrWhiteSpace(_dir))
+                return;
+
+            lock (Sync)
+            {
+                if (File.Exists(tsvPath))
+                {
+                    var age = DateTime.UtcNow - File.GetLastWriteTimeUtc(tsvPath);
+                    if (age < MaxAge && new FileInfo(tsvPath).Length > 1024)
+                        return;
+                }
+            }
+
+            // Serialize downloads so concurrent scan items don't stampede.
+            await Task.Run(() =>
+            {
+                lock (Sync)
+                {
+                    if (File.Exists(tsvPath))
+                    {
+                        var age = DateTime.UtcNow - File.GetLastWriteTimeUtc(tsvPath);
+                        if (age < MaxAge && new FileInfo(tsvPath).Length > 1024)
+                            return;
+                    }
+
+                    try
+                    {
+                        Directory.CreateDirectory(_dir);
+                        var gzPath = tsvPath + ".gz.tmp";
+                        var tmpTsv = tsvPath + ".tmp";
+                        logger?.Info("Downloading " + label + "...");
+
+                        using (var client = CreateHttpClient(TimeSpan.FromMinutes(5)))
+                        using (var response = client.GetAsync(url).GetAwaiter().GetResult())
+                        {
+                            response.EnsureSuccessStatusCode();
+                            using (var remote = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult())
+                            using (var file = File.Create(gzPath))
+                            {
+                                remote.CopyTo(file);
+                            }
+                        }
+
+                        using (var input = File.OpenRead(gzPath))
+                        using (var gzip = new GZipStream(input, CompressionMode.Decompress))
+                        using (var output = File.Create(tmpTsv))
+                        {
+                            gzip.CopyTo(output);
+                        }
+
+                        try { File.Delete(gzPath); } catch { }
+
+                        if (File.Exists(tsvPath))
+                        {
+                            try { File.Delete(tsvPath); } catch { }
+                        }
+                        File.Move(tmpTsv, tsvPath);
+                        logger?.Info(label + " ready (" + new FileInfo(tsvPath).Length + " bytes).");
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.Info("Failed to refresh " + label + ": " + ex.Message);
+                    }
+                }
+            }).ConfigureAwait(false);
+        }
+
+        private static float? BinarySearchRating(string path, string tconst)
+        {
+            using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            {
+                if (fs.Length < 32)
+                    return null;
+
+                long lo = 0;
+                long hi = fs.Length - 1;
+                var buf = new byte[512];
+
+                for (var iter = 0; iter < 64 && lo <= hi; iter++)
+                {
+                    var mid = lo + ((hi - lo) / 2);
+                    var lineStart = FindLineStart(fs, mid);
+                    fs.Position = lineStart;
+                    var line = ReadLine(fs, buf);
+                    if (string.IsNullOrEmpty(line))
+                        break;
+
+                    // Skip header if we landed on it
+                    if (line.StartsWith("tconst", StringComparison.OrdinalIgnoreCase))
+                    {
+                        lo = fs.Position;
+                        continue;
+                    }
+
+                    var tab = line.IndexOf('\t');
+                    if (tab <= 0)
+                    {
+                        lo = fs.Position;
+                        continue;
+                    }
+
+                    var id = line.Substring(0, tab);
+                    var cmp = string.Compare(id, tconst, StringComparison.OrdinalIgnoreCase);
+                    if (cmp == 0)
+                    {
+                        var rest = line.Substring(tab + 1);
+                        var tab2 = rest.IndexOf('\t');
+                        var ratingText = tab2 >= 0 ? rest.Substring(0, tab2) : rest;
+                        if (float.TryParse(ratingText, NumberStyles.Float, CultureInfo.InvariantCulture, out var rating)
+                            && rating >= 1 && rating <= 10)
+                            return rating;
+                        return null;
+                    }
+
+                    if (cmp < 0)
+                        lo = fs.Position;
+                    else
+                        hi = lineStart - 1;
+                }
+            }
+
+            return null;
+        }
+
+        private static long FindLineStart(FileStream fs, long pos)
+        {
+            if (pos <= 0)
+                return 0;
+            long i = pos;
+            while (i > 0)
+            {
+                i--;
+                fs.Position = i;
+                var b = fs.ReadByte();
+                if (b == '\n')
+                    return i + 1;
+            }
+            return 0;
+        }
+
+        private static string ReadLine(FileStream fs, byte[] buf)
+        {
+            using (var ms = new MemoryStream(128))
+            {
+                int n;
+                while ((n = fs.Read(buf, 0, buf.Length)) > 0)
+                {
+                    var cut = -1;
+                    for (var i = 0; i < n; i++)
+                    {
+                        if (buf[i] == (byte)'\n')
+                        {
+                            cut = i;
+                            break;
+                        }
+                    }
+                    if (cut >= 0)
+                    {
+                        ms.Write(buf, 0, cut);
+                        fs.Position = fs.Position - (n - cut - 1);
+                        break;
+                    }
+                    ms.Write(buf, 0, n);
+                    if (ms.Length > 4096)
+                        break;
+                }
+                var bytes = ms.ToArray();
+                if (bytes.Length == 0)
+                    return null;
+                // Trim CR
+                var len = bytes.Length;
+                if (len > 0 && bytes[len - 1] == (byte)'\r')
+                    len--;
+                return Encoding.UTF8.GetString(bytes, 0, len);
+            }
+        }
+
+        private static HttpClient CreateHttpClient(TimeSpan timeout)
+        {
+            var handler = new HttpClientHandler
+            {
+                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
+            };
+            var client = new HttpClient(handler);
+            client.Timeout = timeout;
+            client.DefaultRequestHeaders.TryAddWithoutValidation(
+                "User-Agent",
+                "RatingSync/1.0 (+https://github.com/pejamas/rating-sync; Emby plugin; non-commercial IMDb dataset client)");
+            client.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "*/*");
+            return client;
+        }
+
+        private static string NormalizeTconst(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+                return null;
+            var s = raw.Trim();
+            var m = System.Text.RegularExpressions.Regex.Match(
+                s,
+                @"\b(tt\d{7,10})\b",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (m.Success)
+                return m.Groups[1].Value;
+            if (System.Text.RegularExpressions.Regex.IsMatch(s, @"^\d{7,10}$"))
+                return "tt" + s;
+            return null;
+        }
+    }
+
+    #endregion
+
     #region Scheduled Task
 
     public class RatingRefreshTask : IScheduledTask
@@ -1596,8 +1973,7 @@ namespace RatingSync
         private static readonly Dictionary<string, Dictionary<int, string>> _imdbEpisodeIdCache = new Dictionary<string, Dictionary<int, string>>();
 
         /// <summary>
-        /// api.imdbapi.dev requires a tt-prefixed tconst; bare digits return HTTP 400.
-        /// Also accepts full imdb.com URLs sometimes stored in provider ids.
+        /// Normalize provider ids to a tt-prefixed tconst (also accepts imdb.com title URLs or bare digits).
         /// </summary>
         private static string NormalizeImdbTconst(string raw)
         {
@@ -1909,12 +2285,12 @@ namespace RatingSync
 
                         // Determine source label for display (UI + scan history)
                         string sourceLabel;
-                        if (ratings.UsedImdbApiDev && ratings.UsedScraping)
-                            sourceLabel = "IMDb unofficial API + imdb.com fallback";
-                        else if (ratings.UsedImdbApiDev)
-                            sourceLabel = "IMDb unofficial API";
+                        if (ratings.UsedImdbDataset && ratings.UsedScraping)
+                            sourceLabel = "IMDb dataset + page";
+                        else if (ratings.UsedImdbDataset)
+                            sourceLabel = "IMDb dataset";
                         else if (ratings.UsedScraping)
-                            sourceLabel = "imdb.com fallback";
+                            sourceLabel = "IMDb page";
                         else if (ratings.UsedOmdb && ratings.UsedMdbList)
                             sourceLabel = "OMDb+MDB";
                         else if (ratings.UsedOmdb)
@@ -2098,52 +2474,53 @@ namespace RatingSync
                     result.UsedOmdb = true;
                 }
                 
-                // Fallback: use api.imdbapi.dev (unofficial IMDb API, no key required) if enabled and no rating found.
-                // This bypasses the AWS WAF that now blocks direct IMDb scraping.
+                // Fallback: IMDb official ratings dataset (+ optional page lookup) when enabled.
                 if (!result.CommunityRating.HasValue && config.EnableImdbScraping)
                 {
                     result.ImdbScrapeAttempted = true;
-                    float? apiRating = null;
+                    float? fallbackRating = null;
 
-                    if (!string.IsNullOrWhiteSpace(imdbId))
+                    var episodeId = NormalizeImdbTconst(imdbId);
+                    if (string.IsNullOrWhiteSpace(episodeId) && !string.IsNullOrWhiteSpace(episodeInfo.SeriesImdbId))
                     {
-                        // Prefer querying the episode's own tt-id directly.
-                        result.AttemptedImdbApiDev = true;
-                        apiRating = await FetchImdbApiDevRating(imdbId);
-                    }
-
-                    if (!apiRating.HasValue && !string.IsNullOrWhiteSpace(episodeInfo.SeriesImdbId))
-                    {
-                        result.AttemptedImdbApiDev = true;
-                        // Fall back to the season list endpoint to find this episode.
-                        apiRating = await FetchImdbApiDevEpisodeRating(
+                        // Prefer HTML episode list; fall back to official episode dataset if pages are blocked.
+                        result.AttemptedHtmlScrape = true;
+                        episodeId = await TryResolveEpisodeImdbIdFromSeriesEpisodesPage(
                             episodeInfo.SeriesImdbId,
                             episodeInfo.SeasonNumber,
-                            episodeInfo.EpisodeNumber,
-                            NormalizeImdbTconst(imdbId));
-                    }
-
-                    if (apiRating.HasValue)
-                    {
-                        result.CommunityRating = apiRating;
-                        result.UsedImdbApiDev = true;
-                    }
-                    else
-                    {
-                        // Last resort: try direct HTML scraping (may be blocked by WAF).
-                        result.AttemptedHtmlScrape = true;
-                        float? scrapedRating = null;
-                        if (!string.IsNullOrWhiteSpace(imdbId))
-                            scrapedRating = await ScrapeImdbRating(imdbId);
-                        else
-                            scrapedRating = await ScrapeImdbEpisodeRating(episodeInfo);
-
-                        if (scrapedRating.HasValue)
+                            episodeInfo.EpisodeNumber);
+                        if (string.IsNullOrWhiteSpace(episodeId))
                         {
-                            result.CommunityRating = scrapedRating;
-                            result.UsedScraping = true;
+                            result.AttemptedImdbDataset = true;
+                            episodeId = await ImdbDatasetStore.TryResolveEpisodeIdAsync(
+                                episodeInfo.SeriesImdbId,
+                                episodeInfo.SeasonNumber,
+                                episodeInfo.EpisodeNumber,
+                                _logger);
                         }
                     }
+
+                    if (!string.IsNullOrWhiteSpace(episodeId))
+                    {
+                        result.AttemptedImdbDataset = true;
+                        await ImdbDatasetStore.EnsureRatingsReadyAsync(_logger).ConfigureAwait(false);
+                        fallbackRating = ImdbDatasetStore.TryGetRating(episodeId);
+
+                        if (!fallbackRating.HasValue)
+                        {
+                            result.AttemptedHtmlScrape = true;
+                            fallbackRating = await ScrapeImdbRating(episodeId);
+                            if (fallbackRating.HasValue)
+                                result.UsedScraping = true;
+                        }
+                        else
+                        {
+                            result.UsedImdbDataset = true;
+                        }
+                    }
+
+                    if (fallbackRating.HasValue)
+                        result.CommunityRating = fallbackRating;
                 }
                 return result;
             }
@@ -2219,20 +2596,20 @@ namespace RatingSync
                     break;
             }
 
-            // Fallback for movies/series: use api.imdbapi.dev if scraping is enabled
-            // and the configured sources still haven't returned a community rating.
+            // Fallback for movies/series: official IMDb ratings dataset, then optional page lookup.
             if (!result.CommunityRating.HasValue && config.EnableImdbScraping && !string.IsNullOrWhiteSpace(imdbId))
             {
-                result.AttemptedImdbApiDev = true;
-                var apiRating = await FetchImdbApiDevRating(imdbId);
-                if (apiRating.HasValue)
+                result.ImdbScrapeAttempted = true;
+                result.AttemptedImdbDataset = true;
+                await ImdbDatasetStore.EnsureRatingsReadyAsync(_logger).ConfigureAwait(false);
+                var datasetRating = ImdbDatasetStore.TryGetRating(imdbId);
+                if (datasetRating.HasValue)
                 {
-                    result.CommunityRating = apiRating;
-                    result.UsedImdbApiDev = true;
+                    result.CommunityRating = datasetRating;
+                    result.UsedImdbDataset = true;
                 }
                 else
                 {
-                    // Last resort: direct HTML scrape (may be blocked by WAF).
                     result.AttemptedHtmlScrape = true;
                     var scrapedRating = await ScrapeImdbRating(imdbId);
                     if (scrapedRating.HasValue)
@@ -2263,13 +2640,13 @@ namespace RatingSync
                     parts.Add("OMDb");
                 if (r.ImdbScrapeAttempted)
                 {
-                    if (r.AttemptedImdbApiDev)
-                        parts.Add("IMDb unofficial API (imdbapi.dev)");
+                    if (r.AttemptedImdbDataset)
+                        parts.Add("IMDb ratings dataset");
                     if (r.AttemptedHtmlScrape)
-                        parts.Add("imdb.com (last resort)");
+                        parts.Add("IMDb page lookup");
                 }
                 else if (!config.EnableImdbScraping)
-                    parts.Add("IMDb unofficial API disabled in plugin settings");
+                    parts.Add("IMDb ratings fallback disabled in plugin settings");
             }
             else
             {
@@ -2277,10 +2654,10 @@ namespace RatingSync
                     parts.Add("OMDb");
                 if (r.UsedMdbList)
                     parts.Add("MDBList");
-                if (r.AttemptedImdbApiDev)
-                    parts.Add("IMDb unofficial API (imdbapi.dev)");
+                if (r.AttemptedImdbDataset)
+                    parts.Add("IMDb ratings dataset");
                 if (r.AttemptedHtmlScrape)
-                    parts.Add("imdb.com (last resort)");
+                    parts.Add("IMDb page lookup");
                 if (parts.Count == 0)
                     parts.Add("no sources ran (missing API keys, limits, or IMDb id)");
             }
@@ -2309,7 +2686,7 @@ namespace RatingSync
             if (!hasAnyApi)
             {
                 if (episodeInfo != null && !config.EnableImdbScraping && (!canUseOmdb || string.IsNullOrEmpty(config.OmdbApiKey)))
-                    return $"No scores available, consulted {consulted}. Add an OMDb key or enable IMDb unofficial API for episode IMDb ratings.";
+                    return $"No scores available, consulted {consulted}. Add an OMDb key or enable IMDb ratings fallback for episode IMDb ratings.";
 
                 return $"No scores available, consulted {consulted}. Sources returned no usable IMDb or RT data for this item (new or unrated episodes are common).";
             }
@@ -2490,10 +2867,7 @@ namespace RatingSync
             return result;
         }
 
-        // Fetch the IMDb rating for any title (episode, movie, series) via api.imdbapi.dev.
-        // This unofficial API mirrors live IMDb data and is not subject to the AWS WAF
-        // that now blocks direct imdb.com requests.
-        private async Task<float?> FetchImdbApiDevRating(string imdbId)
+        private async Task<float?> ScrapeImdbRating(string imdbId)
         {
             try
             {
@@ -2501,98 +2875,38 @@ namespace RatingSync
                 if (string.IsNullOrWhiteSpace(imdbId))
                     return null;
 
-                using (var client = new HttpClient())
+                using (var handler = new HttpClientHandler
                 {
-                    client.Timeout = TimeSpan.FromSeconds(10);
-                    client.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json");
-                    var url = $"https://api.imdbapi.dev/titles/{imdbId}";
-                    var response = await client.GetAsync(url);
-                    if (!response.IsSuccessStatusCode)
-                        return null;
-
-                    var body = await response.Content.ReadAsStringAsync();
-                    var data = _jsonSerializer.DeserializeFromString<ImdbApiDevTitleResponse>(body);
-                    if (data?.rating?.aggregateRating.HasValue == true && data.rating.aggregateRating.Value >= 1)
-                        return data.rating.aggregateRating.Value;
-                }
-            }
-            catch { }
-            return null;
-        }
-
-        // Fetch an episode's IMDb rating via the season-episode list endpoint on api.imdbapi.dev.
-        // Used when Emby doesn't supply an episode-level IMDb ID, or when the direct title lookup had no rating.
-        // alreadyTriedEpisodeTconst: avoid a redundant GET when FetchRatings already called FetchImdbApiDevRating(imdbId).
-        private async Task<float?> FetchImdbApiDevEpisodeRating(
-            string seriesImdbId,
-            int seasonNumber,
-            int episodeNumber,
-            string alreadyTriedEpisodeTconst = null)
-        {
-            try
-            {
-                seriesImdbId = NormalizeImdbTconst(seriesImdbId);
-                if (string.IsNullOrWhiteSpace(seriesImdbId) || seasonNumber <= 0 || episodeNumber <= 0)
-                    return null;
-
-                using (var client = new HttpClient())
+                    AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
+                })
+                using (var client = new HttpClient(handler))
                 {
-                    client.Timeout = TimeSpan.FromSeconds(10);
-                    client.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json");
-                    // Use ?season= (not seasonNumber=): the latter can match multiple seasons on the API.
-                    var url = $"https://api.imdbapi.dev/titles/{seriesImdbId}/episodes?season={seasonNumber}";
-                    var response = await client.GetAsync(url);
-                    if (!response.IsSuccessStatusCode)
-                        return null;
+                    client.Timeout = TimeSpan.FromSeconds(15);
+                    client.DefaultRequestHeaders.TryAddWithoutValidation(
+                        "User-Agent",
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
+                    client.DefaultRequestHeaders.TryAddWithoutValidation(
+                        "Accept",
+                        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8");
+                    client.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "en-US,en;q=0.9");
+                    client.DefaultRequestHeaders.TryAddWithoutValidation("Cache-Control", "no-cache");
+                    client.DefaultRequestHeaders.TryAddWithoutValidation("Pragma", "no-cache");
+                    client.DefaultRequestHeaders.TryAddWithoutValidation("Upgrade-Insecure-Requests", "1");
 
-                    var body = await response.Content.ReadAsStringAsync();
-                    var data = _jsonSerializer.DeserializeFromString<ImdbApiDevEpisodesResponse>(body);
-                    // If the API returns duplicate episode indices, prefer the row with more votes.
-                    // (Some seasons include extras without episodeNumber; those never match here.)
-                    var ep = data?.episodes?
-                        .Where(e => e.episodeNumber == episodeNumber)
-                        .OrderByDescending(e => e.rating?.voteCount ?? 0)
-                        .FirstOrDefault();
-                    if (ep?.rating?.aggregateRating.HasValue == true && ep.rating.aggregateRating.Value >= 1)
-                        return ep.rating.aggregateRating.Value;
-                    // Season list sometimes omits rating while GET /titles/{episodeId} includes it.
-                    var epNorm = NormalizeImdbTconst(ep?.id);
-                    var triedNorm = NormalizeImdbTconst(alreadyTriedEpisodeTconst);
-                    if (!string.IsNullOrWhiteSpace(epNorm)
-                        && !string.Equals(epNorm, triedNorm, StringComparison.OrdinalIgnoreCase))
-                    {
-                        var byEpisodeId = await FetchImdbApiDevRating(ep.id);
-                        if (byEpisodeId.HasValue)
-                            return byEpisodeId;
-                    }
-                }
-            }
-            catch { }
-            return null;
-        }
-
-        private async Task<float?> ScrapeImdbRating(string imdbId)
-        {
-            try
-            {
-                if (string.IsNullOrWhiteSpace(imdbId))
-                    return null;
-
-                using (var client = new HttpClient())
-                {
-                    client.Timeout = TimeSpan.FromSeconds(10);
-                    client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
-                    client.DefaultRequestHeaders.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8");
-                    client.DefaultRequestHeaders.Add("Accept-Language", "en-US,en;q=0.9");
-                    client.DefaultRequestHeaders.Add("Accept-Encoding", "gzip, deflate, br");
-                    
                     var url = $"https://www.imdb.com/title/{imdbId}/";
                     var response = await client.GetAsync(url);
-                    
-                    if (!response.IsSuccessStatusCode)
+
+                    // AWS WAF often returns 202 with a challenge interstitial instead of the title page.
+                    if (!response.IsSuccessStatusCode || (int)response.StatusCode == 202)
                         return null;
-                    
+
                     var html = await response.Content.ReadAsStringAsync();
+                    if (string.IsNullOrWhiteSpace(html) || html.Length < 2000)
+                        return null;
+                    if (html.IndexOf("captcha", StringComparison.OrdinalIgnoreCase) >= 0
+                        || html.IndexOf("awswaf", StringComparison.OrdinalIgnoreCase) >= 0
+                        || html.IndexOf("challenge-platform", StringComparison.OrdinalIgnoreCase) >= 0)
+                        return null;
 
                     // Prefer parsing near the requested tconst to avoid accidentally capturing a parent series rating
                     // that may also be embedded on an episode page.
@@ -2612,34 +2926,43 @@ namespace RatingSync
                     {
                         scopedHtml = html;
                     }
-                    
-                    // Pattern 1 (BEST): Look for ratingsSummary with aggregateRating - most reliable for episodes
-                    // Format: "ratingsSummary":{"aggregateRating":6.7 or "ratingsSummary":{"topRanking":null,...,"aggregateRating":6.7
-                    var match = System.Text.RegularExpressions.Regex.Match(scopedHtml, @"""ratingsSummary""[^}]*""aggregateRating""\s*:\s*([\d.]+)");
-                    
-                    // Pattern 2: JSON-LD AggregateRating object - "AggregateRating"..."ratingValue":8.5
-                    // This is used for movies/shows with full JSON-LD structured data
+
+                    var match = System.Text.RegularExpressions.Regex.Match(
+                        scopedHtml,
+                        @"""ratingsSummary""[^}]*""aggregateRating""\s*:\s*([\d.]+)");
+
                     if (!match.Success)
                     {
-                        match = System.Text.RegularExpressions.Regex.Match(scopedHtml, @"""AggregateRating""[^}]*""ratingValue""\s*:\s*([\d.]+)");
+                        match = System.Text.RegularExpressions.Regex.Match(
+                            scopedHtml,
+                            @"""AggregateRating""[^}]*""ratingValue""\s*:\s*([\d.]+)");
                     }
-                    
-                    // Pattern 3: Fallback - aggregateRating as standalone object (not in ratingsSummary)
+
                     if (!match.Success)
                     {
-                        match = System.Text.RegularExpressions.Regex.Match(scopedHtml, @"""aggregateRating""\s*:\s*\{[^}]*""ratingValue""\s*:\s*([\d.]+)");
+                        match = System.Text.RegularExpressions.Regex.Match(
+                            scopedHtml,
+                            @"""aggregateRating""\s*:\s*\{[^}]*""ratingValue""\s*:\s*([\d.]+)");
                     }
-                    
-                    if (match.Success && float.TryParse(match.Groups[1].Value, 
-                        System.Globalization.NumberStyles.Float, 
-                        System.Globalization.CultureInfo.InvariantCulture, 
-                        out var rating))
+
+                    if (!match.Success)
                     {
-                        // Validate rating is in expected range
-                        if (rating >= 1 && rating <= 10)
-                        {
-                            return rating;
-                        }
+                        // __NEXT_DATA__ style: "aggregateRating":8.2 without nested object
+                        match = System.Text.RegularExpressions.Regex.Match(
+                            scopedHtml,
+                            @"""aggregateRating""\s*:\s*([\d.]+)");
+                    }
+
+                    if (match.Success
+                        && float.TryParse(
+                            match.Groups[1].Value,
+                            NumberStyles.Float,
+                            CultureInfo.InvariantCulture,
+                            out var rating)
+                        && rating >= 1
+                        && rating <= 10)
+                    {
+                        return rating;
                     }
                 }
             }
@@ -2649,38 +2972,10 @@ namespace RatingSync
             }
             catch (Exception)
             {
-                // Scraping error - ignore
+                // Page lookup error - ignore
             }
-            
+
             return null;
-        }
-
-        private async Task<float?> ScrapeImdbEpisodeRating(EpisodeInfo episodeInfo)
-        {
-            try
-            {
-                if (episodeInfo == null)
-                    return null;
-                if (string.IsNullOrWhiteSpace(episodeInfo.SeriesImdbId))
-                    return null;
-                if (episodeInfo.SeasonNumber <= 0 || episodeInfo.EpisodeNumber <= 0)
-                    return null;
-
-                var episodeImdbId = await TryResolveEpisodeImdbIdFromSeriesEpisodesPage(
-                    episodeInfo.SeriesImdbId,
-                    episodeInfo.SeasonNumber,
-                    episodeInfo.EpisodeNumber);
-
-                if (string.IsNullOrWhiteSpace(episodeImdbId))
-                    return null;
-
-                // Now scrape the episode title page.
-                return await ScrapeImdbRating(episodeImdbId);
-            }
-            catch
-            {
-                return null;
-            }
         }
 
         private async Task<string> TryResolveEpisodeImdbIdFromSeriesEpisodesPage(string seriesImdbId, int seasonNumber, int episodeNumber)
@@ -2699,21 +2994,28 @@ namespace RatingSync
                     }
                 }
 
-                using (var client = new HttpClient())
+                using (var handler = new HttpClientHandler
                 {
-                    client.Timeout = TimeSpan.FromSeconds(10);
-                    client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
-                    client.DefaultRequestHeaders.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8");
-                    client.DefaultRequestHeaders.Add("Accept-Language", "en-US,en;q=0.9");
-                    client.DefaultRequestHeaders.Add("Accept-Encoding", "gzip, deflate, br");
+                    AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
+                })
+                using (var client = new HttpClient(handler))
+                {
+                    client.Timeout = TimeSpan.FromSeconds(15);
+                    client.DefaultRequestHeaders.TryAddWithoutValidation(
+                        "User-Agent",
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
+                    client.DefaultRequestHeaders.TryAddWithoutValidation(
+                        "Accept",
+                        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8");
+                    client.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "en-US,en;q=0.9");
 
                     var url = $"https://www.imdb.com/title/{seriesImdbId}/episodes?season={seasonNumber}";
                     var response = await client.GetAsync(url);
-                    if (!response.IsSuccessStatusCode)
+                    if (!response.IsSuccessStatusCode || (int)response.StatusCode == 202)
                         return null;
 
                     var html = await response.Content.ReadAsStringAsync();
-                    if (string.IsNullOrWhiteSpace(html))
+                    if (string.IsNullOrWhiteSpace(html) || html.Length < 500)
                         return null;
 
                     // Parse and cache all episode ids for this season in one pass.
@@ -2816,10 +3118,10 @@ namespace RatingSync
             public float? CriticRating { get; set; }
             public bool UsedOmdb { get; set; }
             public bool UsedMdbList { get; set; }
-            /// <summary>True when the score came from a direct imdb.com page request (last resort, not imdbapi.dev).</summary>
+            /// <summary>True when the score came from a direct imdb.com page request.</summary>
             public bool UsedScraping { get; set; }
-            public bool UsedImdbApiDev { get; set; }
-            public bool AttemptedImdbApiDev { get; set; }
+            public bool UsedImdbDataset { get; set; }
+            public bool AttemptedImdbDataset { get; set; }
             public bool AttemptedHtmlScrape { get; set; }
             public bool ImdbScrapeAttempted { get; set; }
         }
@@ -2836,30 +3138,6 @@ namespace RatingSync
         {
             public string Source { get; set; }
             public string Value { get; set; }
-        }
-
-        private class ImdbApiDevRating
-        {
-            public float? aggregateRating { get; set; }
-            public int? voteCount { get; set; }
-        }
-
-        private class ImdbApiDevTitleResponse
-        {
-            public string id { get; set; }
-            public ImdbApiDevRating rating { get; set; }
-        }
-
-        private class ImdbApiDevEpisodesResponse
-        {
-            public List<ImdbApiDevEpisodeEntry> episodes { get; set; }
-        }
-
-        private class ImdbApiDevEpisodeEntry
-        {
-            public string id { get; set; }
-            public int? episodeNumber { get; set; }
-            public ImdbApiDevRating rating { get; set; }
         }
 
         private class MdbListResponse

@@ -94,7 +94,7 @@ function (BaseView, loading, toast) {
                 mdbText = 'MDBList: ' + (data.MdbListUsed || 0) + (data.MdbListRateLimitEnabled && data.MdbListLimit ? ('/' + data.MdbListLimit) : '');
             }
 
-            var imdbText = 'IMDb API: ' + (data.ImdbScrapesUsed || 0);
+            var imdbText = 'IMDb fallback: ' + (data.ImdbScrapesUsed || 0);
 
             var html = '';
             if (todayLabel) {
@@ -1447,7 +1447,7 @@ function (BaseView, loading, toast) {
             html += self.reportMetaBox('Errors', String(src.ErrorItems || 0));
             html += self.reportMetaBox('OMDb calls', String(src.OmdbRequests || 0));
             html += self.reportMetaBox('MDBList calls', String(src.MdbListRequests || 0));
-            html += self.reportMetaBox('IMDb API calls', String(src.ImdbScrapeRequests || 0));
+            html += self.reportMetaBox('IMDb fallback', String(src.ImdbScrapeRequests || 0));
             html += self.reportMetaBox('Status', statusText);
             html += '</div>';
 

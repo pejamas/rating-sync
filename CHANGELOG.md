@@ -6,6 +6,11 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-07-18
+
+- Fix: `api.imdbapi.dev` is offline; IMDb ratings fallback now uses IMDb’s official free daily datasets (`title.ratings.tsv.gz`, and `title.episode.tsv.gz` when episode IDs are missing), with an improved direct page lookup as a secondary attempt.
+- UI: Settings and API usage bar describe **IMDb fallback** (dataset-based) instead of the retired unofficial API.
+
 ## [1.0.3] - 2026-05-04
 
 - Fix: IMDb unofficial API (`api.imdbapi.dev`) — normalize `tt` IDs from URLs or digit-only ids; use `?season=` for episode lists (avoid ambiguous `seasonNumber=`); resolve duplicate episode rows by vote count; when a season list row has no score, try the episode title endpoint (without duplicating a GET already done for Emby’s episode IMDb id).
