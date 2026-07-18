@@ -16,6 +16,8 @@ function (BaseView, loading, toast) {
             this.selectedMissingItem = null;
             this.scanHistorySessions = null;
             this._scanReportKeydownBound = false;
+            this._uiBound = false;
+            this._pollTick = 0;
         }
 
         // Tab navigation
@@ -504,6 +506,12 @@ function (BaseView, loading, toast) {
                 
                 view.querySelector('#chkTestMode').checked = config.TestMode === true;
 
+                var testBanner = view.querySelector('#testModeBanner');
+                if (testBanner) {
+                    if (config.TestMode === true) testBanner.classList.remove('hide');
+                    else testBanner.classList.add('hide');
+                }
+
                 loading.hide();
             }).catch(function (err) {
                 console.error('Error loading config:', err);
@@ -602,6 +610,18 @@ function (BaseView, loading, toast) {
             return div.innerHTML;
         }
 
+        unpackDetail(packed) {
+            if (packed == null) return { name: '', detail: '' };
+            var text = String(packed);
+            var sep = '\x1e';
+            var idx = text.indexOf(sep);
+            if (idx < 0) {
+                // Legacy: key was the name, value was the detail
+                return { name: '', detail: text };
+            }
+            return { name: text.substring(0, idx), detail: text.substring(idx + 1) };
+        }
+
         renderResultList(view, items, listId, type) {
             var list = view.querySelector('#' + listId);
             list.innerHTML = '';
@@ -621,17 +641,32 @@ function (BaseView, loading, toast) {
                 return;
             }
             
-            // Reverse to show most recent first
+            // Reverse to show most recent first; cap live list for performance
             keys.reverse();
+            var shown = keys.slice(0, 200);
             
-            keys.forEach(function(name) {
-                var detail = items[name];
+            shown.forEach(function(key) {
+                var unpacked = this.unpackDetail(items[key]);
+                var name = unpacked.name || key;
+                var detail = unpacked.detail || '';
+                // Legacy packed-as-detail-only when name empty and key looks like a title
+                if (!unpacked.name && key.indexOf('name:') !== 0 && !/^\d+$/.test(key)) {
+                    name = key;
+                    detail = unpacked.detail;
+                }
                 var li = document.createElement('li');
                 li.className = 'resultItem ' + type;
                 li.innerHTML = '<span class="resultItemName">' + this.escapeHtml(name) + '</span>' +
                               '<span class="resultItemDetail">' + this.escapeHtml(detail) + '</span>';
                 list.appendChild(li);
             }, this);
+
+            if (keys.length > shown.length) {
+                var more = document.createElement('li');
+                more.className = 'resultEmpty';
+                more.textContent = 'Showing latest ' + shown.length + ' of ' + keys.length;
+                list.appendChild(more);
+            }
         }
 
         updateProgressUI(view, progress) {
@@ -643,6 +678,9 @@ function (BaseView, loading, toast) {
             var updatedItems = progress.UpdatedItems || progress.updatedItems || 0;
             var skippedItems = progress.SkippedItems || progress.skippedItems || 0;
             var errorItems = progress.ErrorItems || progress.errorItems || 0;
+            var smartSkipped = progress.SmartSkippedItems || progress.smartSkippedItems || 0;
+            var statusMessage = progress.StatusMessage || progress.statusMessage || '';
+            var wasCancelled = progress.WasCancelled || progress.wasCancelled || false;
             var currentItem = progress.CurrentItem || progress.currentItem || '';
             var totalItems = progress.TotalItems || progress.totalItems || 0;
             var isRunning = progress.IsRunning || progress.isRunning || false;
@@ -658,17 +696,26 @@ function (BaseView, loading, toast) {
             fill.style.width = percentComplete + '%';
             text.textContent = Math.round(percentComplete) + '%';
 
-            // Update stats
+            // Update stats / badges from the same counters
             view.querySelector('#statProcessed').textContent = processedItems;
             view.querySelector('#statUpdated').textContent = updatedItems;
             view.querySelector('#statSkipped').textContent = skippedItems;
             view.querySelector('#statErrors').textContent = errorItems;
-            
-            // Update badges
-            view.querySelector('#updatedBadge').textContent = Object.keys(updatedDetails).length;
-            view.querySelector('#skippedBadge').textContent = Object.keys(skippedDetails).length;
-            view.querySelector('#failureBadge').textContent = Object.keys(failureDetails).length;
+            view.querySelector('#updatedBadge').textContent = updatedItems;
+            view.querySelector('#skippedBadge').textContent = skippedItems;
+            view.querySelector('#failureBadge').textContent = errorItems;
 
+            var smartNote = view.querySelector('#smartSkipNote');
+            if (smartNote) {
+                if (smartSkipped > 0 || statusMessage) {
+                    var note = statusMessage || ('Smart-skipped ' + smartSkipped + ' item(s) before this scan');
+                    smartNote.textContent = note;
+                    smartNote.classList.remove('hide');
+                } else {
+                    smartNote.classList.add('hide');
+                }
+            }
+            
             // Update current item
             var currentItemBox = view.querySelector('#currentItemBox');
             var currentItemEl = view.querySelector('#currentItem');
@@ -706,10 +753,13 @@ function (BaseView, loading, toast) {
             
             return { 
                 isRunning: isRunning,
+                wasCancelled: wasCancelled,
+                statusMessage: statusMessage,
                 updatedItems: updatedItems, 
                 skippedItems: skippedItems, 
                 errorItems: errorItems,
-                totalItems: totalItems
+                totalItems: totalItems,
+                smartSkipped: smartSkipped
             };
         }
 
@@ -748,8 +798,8 @@ function (BaseView, loading, toast) {
 
             // Check for API keys first
             ApiClient.getPluginConfiguration(pluginId).then(function(config) {
-                if (!config.OmdbApiKey && !config.MdbListApiKey) {
-                    toast({ text: 'Please configure at least one API key in Settings first.' });
+                if (!config.OmdbApiKey && !config.MdbListApiKey && !config.EnableImdbScraping) {
+                    toast({ text: 'Configure an OMDb/MDBList key or enable IMDb ratings fallback in Settings.' });
                     return;
                 }
 
@@ -765,6 +815,11 @@ function (BaseView, loading, toast) {
                 view.querySelector('#progressSection').classList.remove('hide');
                 view.querySelector('#elapsedTime').textContent = '';
                 view.querySelector('#etaBox').classList.add('hide');
+                var smartNote = view.querySelector('#smartSkipNote');
+                if (smartNote) {
+                    smartNote.textContent = '';
+                    smartNote.classList.add('hide');
+                }
                 self.setStatus(view, 'running', 'Starting...');
                 
                 // Reset stats display
@@ -802,9 +857,14 @@ function (BaseView, loading, toast) {
                         var task = tasks.find(function(t) { return t.Key === 'RatingSync'; });
                         
                         if (task) {
+                            if (task.State === 'Running') {
+                                self.setStatus(view, 'warning', 'Already running');
+                                self.stopRefresh(view);
+                                toast({ text: 'A rating sync is already running.' });
+                                return;
+                            }
                             ApiClient.startScheduledTask(task.Id).then(function() {
                                 self.startTime = new Date();
-                                // Start polling for progress
                                 self.startPolling(view, task.Id);
                             }).catch(function(err) {
                                 self.setStatus(view, 'error', 'Failed to start');
@@ -839,8 +899,9 @@ function (BaseView, loading, toast) {
                         startTask();
                     }).catch(function(err) {
                         console.error('Error queuing selected items:', err);
-                        // Fall back to full scan
-                        startTask();
+                        self.setStatus(view, 'error', 'Queue failed');
+                        self.stopRefresh(view);
+                        toast({ text: 'Failed to queue selected items. Full library scan was not started.' });
                     });
                 } else {
                     // No selection - run full scan
@@ -851,6 +912,7 @@ function (BaseView, loading, toast) {
 
         startPolling(view, taskId) {
             var self = this;
+            self._pollTick = 0;
             
             if (self.pollInterval) {
                 clearInterval(self.pollInterval);
@@ -866,14 +928,17 @@ function (BaseView, loading, toast) {
 
             // Poll progress every 1.5 seconds
             self.pollInterval = setInterval(function() {
-                // Fetch our custom progress API
+                self._pollTick++;
                 self.fetchProgress(view, false);
+                if (self._pollTick % 4 === 0) {
+                    self.updateApiCounters(view);
+                }
                 
-                // Also check task state
                 ApiClient.getScheduledTask(taskId).then(function(task) {
                     if (task.State === 'Idle') {
-                        // Task finished - fetch final progress
-                        self.fetchProgress(view, false).then(function(stats) {
+                        self.fetchProgress(view, true).then(function(stats) {
+                            // Avoid finishing on a brief Idle race while progress is still running
+                            if (stats && stats.isRunning) return;
                             self.finishRefresh(view, stats);
                         });
                     }
@@ -897,13 +962,24 @@ function (BaseView, loading, toast) {
             var updated = stats ? stats.updatedItems : 0;
             var skipped = stats ? stats.skippedItems : 0;
             var errors = stats ? stats.errorItems : 0;
-            var total = stats ? stats.totalItems : 0;
+            var cancelled = stats && stats.wasCancelled;
+            var statusMessage = stats && stats.statusMessage;
             
-            var statusText = 'Completed! ' + updated + ' updated';
-            if (skipped > 0) statusText += ', ' + skipped + ' skipped';
+            var statusText;
+            var statusClass = errors > 0 ? 'error' : 'completed';
+            if (cancelled) {
+                statusClass = 'warning';
+                statusText = 'Cancelled — ' + updated + ' updated';
+            } else if (statusMessage && (!stats || stats.totalItems === 0)) {
+                statusClass = 'warning';
+                statusText = statusMessage;
+            } else {
+                statusText = 'Completed! ' + updated + ' updated';
+            }
+            if (!cancelled && skipped > 0) statusText += ', ' + skipped + ' skipped';
             if (errors > 0) statusText += ', ' + errors + ' errors';
             
-            self.setStatus(view, errors > 0 ? 'error' : 'completed', statusText);
+            self.setStatus(view, statusClass, statusText);
             self.stopRefresh(view);
             
             // Hide ETA
@@ -911,6 +987,7 @@ function (BaseView, loading, toast) {
             
             // Final elapsed time update
             self.updateElapsedTime(view);
+            self.updateApiCounters(view);
         }
 
         cancelRefresh(view) {
@@ -990,23 +1067,26 @@ function (BaseView, loading, toast) {
                     var task = tasks.find(function(t) { return t.Key === 'RatingSync'; });
                     
                     if (task && task.State === 'Running') {
-                        // Task is running, update UI and start polling
+                        // Task is running — always resume polling (even if ProgressTracker hasn't flipped yet)
                         view.querySelector('#btnRunRefresh').classList.add('hide');
                         view.querySelector('#btnCancelRefresh').classList.remove('hide');
-                        
-                        // Resume elapsed time tracking if we have start time
-                        if (stats && stats.isRunning) {
-                            self.startPolling(view, task.Id);
-                        }
+                        view.querySelector('#progressSection').classList.remove('hide');
+                        self.setStatus(view, 'running', 'Running...');
+                        self.startPolling(view, task.Id);
                     } else {
                         // Task not running
-                        if (stats && stats.totalItems > 0) {
-                            // We have results from a previous run
+                        if (stats && stats.statusMessage && stats.totalItems === 0) {
+                            self.setStatus(view, 'warning', stats.statusMessage);
+                        } else if (stats && stats.totalItems > 0) {
                             var statusText = stats.updatedItems + ' updated, ' + stats.skippedItems + ' skipped';
                             if (stats.errorItems > 0) {
                                 statusText += ', ' + stats.errorItems + ' errors';
                             }
-                            self.setStatus(view, stats.errorItems > 0 ? 'error' : 'completed', 'Last run: ' + statusText);
+                            if (stats.wasCancelled) {
+                                self.setStatus(view, 'warning', 'Last run cancelled: ' + statusText);
+                            } else {
+                                self.setStatus(view, stats.errorItems > 0 ? 'error' : 'completed', 'Last run: ' + statusText);
+                            }
                         }
                     }
                 });
@@ -1018,9 +1098,146 @@ function (BaseView, loading, toast) {
             var self = this;
             var view = this.view;
 
-            // Bind tab navigation
-            self.bindTabNavigation(view);
-            self.bindResultTabs(view);
+            if (!self._uiBound) {
+                self._uiBound = true;
+                self.bindTabNavigation(view);
+                self.bindResultTabs(view);
+                self.bindLibrarySelection(view);
+
+                var form = view.querySelector('.imdbRefreshConfigForm');
+                if (form) {
+                    form.addEventListener('submit', function (e) {
+                        e.preventDefault();
+                        self.saveConfig(view);
+                        return false;
+                    });
+                }
+
+                var btnRun = view.querySelector('#btnRunRefresh');
+                if (btnRun) {
+                    btnRun.addEventListener('click', function() {
+                        self.startRefresh(view);
+                    });
+                }
+
+                var btnCancel = view.querySelector('#btnCancelRefresh');
+                if (btnCancel) {
+                    btnCancel.addEventListener('click', function() {
+                        self.cancelRefresh(view);
+                    });
+                }
+
+                var btnClearResults = view.querySelector('#btnClearResults');
+                if (btnClearResults) {
+                    btnClearResults.addEventListener('click', function() {
+                        self.clearResults(view);
+                    });
+                }
+
+                var chkOmdbRateLimit = view.querySelector('#chkOmdbRateLimit');
+                if (chkOmdbRateLimit) {
+                    chkOmdbRateLimit.addEventListener('change', function() {
+                        view.querySelector('#omdbLimitOptions').style.display = this.checked ? 'block' : 'none';
+                    });
+                }
+
+                var chkMdbListRateLimit = view.querySelector('#chkMdbListRateLimit');
+                if (chkMdbListRateLimit) {
+                    chkMdbListRateLimit.addEventListener('change', function() {
+                        view.querySelector('#mdblistLimitOptions').style.display = this.checked ? 'block' : 'none';
+                    });
+                }
+
+                var btnLoadMissing = view.querySelector('#btnLoadMissing');
+                if (btnLoadMissing) {
+                    btnLoadMissing.addEventListener('click', function() {
+                        self.loadMissingData(view);
+                    });
+                }
+
+                var btnScanMissingSelected = view.querySelector('#btnScanMissingSelected');
+                if (btnScanMissingSelected) {
+                    btnScanMissingSelected.addEventListener('click', function() {
+                        self.scanSelectedMissingItem(view);
+                    });
+                }
+
+                var missingDataType = view.querySelector('#missingDataType');
+                if (missingDataType) {
+                    missingDataType.addEventListener('change', function() {
+                        if (self.missingDataCache) {
+                            self.renderMissingData(view, self.missingDataCache);
+                        }
+                    });
+                }
+
+                var missingDataIssue = view.querySelector('#missingDataIssue');
+                if (missingDataIssue) {
+                    missingDataIssue.addEventListener('change', function() {
+                        if (self.missingDataCache) {
+                            self.renderMissingData(view, self.missingDataCache);
+                        }
+                    });
+                }
+
+                var btnSearchHistory = view.querySelector('#btnSearchHistory');
+                if (btnSearchHistory) {
+                    btnSearchHistory.addEventListener('click', function() {
+                        self.searchItemHistory(view);
+                    });
+                }
+
+                var txtItemSearch = view.querySelector('#txtItemSearch');
+                if (txtItemSearch) {
+                    txtItemSearch.addEventListener('keypress', function(e) {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            self.searchItemHistory(view);
+                        }
+                    });
+                }
+
+                var btnCloseScanReport = view.querySelector('#btnCloseScanReport');
+                if (btnCloseScanReport) {
+                    btnCloseScanReport.addEventListener('click', function() {
+                        self.closeScanReport(view);
+                    });
+                }
+
+                var scanReportBackdrop = view.querySelector('#scanReportBackdrop');
+                if (scanReportBackdrop) {
+                    scanReportBackdrop.addEventListener('click', function() {
+                        self.closeScanReport(view);
+                    });
+                }
+
+                var btnCopyScanReport = view.querySelector('#btnCopyScanReport');
+                if (btnCopyScanReport) {
+                    btnCopyScanReport.addEventListener('click', function() {
+                        self.copyScanReportToClipboard(view);
+                    });
+                }
+
+                var btnDeleteScan = view.querySelector('#btnDeleteScan');
+                if (btnDeleteScan) {
+                    btnDeleteScan.addEventListener('click', function() {
+                        var sessionId = self.activeScanReportSession && self.activeScanReportSession.SessionId;
+                        self.deleteScanBySessionId(view, sessionId);
+                    });
+                }
+
+                if (!self._scanReportKeydownBound) {
+                    self._scanReportKeydownBound = true;
+                    document.addEventListener('keydown', function(e) {
+                        if (e.key === 'Escape') {
+                            var modal = view.querySelector('#scanReportModal');
+                            if (modal && !modal.classList.contains('hide')) {
+                                self.closeScanReport(view);
+                            }
+                        }
+                    });
+                }
+            }
 
             // Load configuration
             self.loadConfig(view);
@@ -1028,152 +1245,13 @@ function (BaseView, loading, toast) {
             // Load API counters
             self.updateApiCounters(view);
 
-            // Load libraries and bind selection
+            // Load libraries
             self.loadLibraries(view);
-            self.bindLibrarySelection(view);
 
             self.updateAddedWithinVisibility(view);
 
             // Check if task is already running and restore state
             self.checkInitialState(view);
-
-            // Form submission
-            var form = view.querySelector('.imdbRefreshConfigForm');
-            if (form) {
-                form.addEventListener('submit', function (e) {
-                    e.preventDefault();
-                    self.saveConfig(view);
-                    return false;
-                });
-            }
-
-            // Run button
-            var btnRun = view.querySelector('#btnRunRefresh');
-            if (btnRun) {
-                btnRun.addEventListener('click', function() {
-                    self.startRefresh(view);
-                });
-            }
-
-            // Cancel button
-            var btnCancel = view.querySelector('#btnCancelRefresh');
-            if (btnCancel) {
-                btnCancel.addEventListener('click', function() {
-                    self.cancelRefresh(view);
-                });
-            }
-
-            // Clear results button
-            var btnClearResults = view.querySelector('#btnClearResults');
-            if (btnClearResults) {
-                btnClearResults.addEventListener('click', function() {
-                    self.clearResults(view);
-                });
-            }
-
-            // Rate limit checkbox toggles
-            var chkOmdbRateLimit = view.querySelector('#chkOmdbRateLimit');
-            if (chkOmdbRateLimit) {
-                chkOmdbRateLimit.addEventListener('change', function() {
-                    view.querySelector('#omdbLimitOptions').style.display = this.checked ? 'block' : 'none';
-                });
-            }
-            var chkMdbListRateLimit = view.querySelector('#chkMdbListRateLimit');
-            if (chkMdbListRateLimit) {
-                chkMdbListRateLimit.addEventListener('change', function() {
-                    view.querySelector('#mdblistLimitOptions').style.display = this.checked ? 'block' : 'none';
-                });
-            }
-            
-            // History tab bindings
-            var btnLoadMissing = view.querySelector('#btnLoadMissing');
-            if (btnLoadMissing) {
-                btnLoadMissing.addEventListener('click', function() {
-                    self.loadMissingData(view);
-                });
-            }
-
-            var btnScanMissingSelected = view.querySelector('#btnScanMissingSelected');
-            if (btnScanMissingSelected) {
-                btnScanMissingSelected.addEventListener('click', function() {
-                    self.scanSelectedMissingItem(view);
-                });
-            }
-
-            var missingDataType = view.querySelector('#missingDataType');
-            if (missingDataType) {
-                missingDataType.addEventListener('change', function() {
-                    if (self.missingDataCache) {
-                        self.renderMissingData(view, self.missingDataCache);
-                    }
-                });
-            }
-
-            var missingDataIssue = view.querySelector('#missingDataIssue');
-            if (missingDataIssue) {
-                missingDataIssue.addEventListener('change', function() {
-                    if (self.missingDataCache) {
-                        self.renderMissingData(view, self.missingDataCache);
-                    }
-                });
-            }
-            
-            var btnSearchHistory = view.querySelector('#btnSearchHistory');
-            if (btnSearchHistory) {
-                btnSearchHistory.addEventListener('click', function() {
-                    self.searchItemHistory(view);
-                });
-            }
-            
-            var txtItemSearch = view.querySelector('#txtItemSearch');
-            if (txtItemSearch) {
-                txtItemSearch.addEventListener('keypress', function(e) {
-                    if (e.key === 'Enter') {
-                        self.searchItemHistory(view);
-                    }
-                });
-            }
-
-            // Scan report modal bindings
-            var btnCloseScanReport = view.querySelector('#btnCloseScanReport');
-            if (btnCloseScanReport) {
-                btnCloseScanReport.addEventListener('click', function() {
-                    self.closeScanReport(view);
-                });
-            }
-
-            var scanReportBackdrop = view.querySelector('#scanReportBackdrop');
-            if (scanReportBackdrop) {
-                scanReportBackdrop.addEventListener('click', function() {
-                    self.closeScanReport(view);
-                });
-            }
-
-            var btnCopyScanReport = view.querySelector('#btnCopyScanReport');
-            if (btnCopyScanReport) {
-                btnCopyScanReport.addEventListener('click', function() {
-                    self.copyScanReportToClipboard(view);
-                });
-            }
-
-            var btnDeleteScan = view.querySelector('#btnDeleteScan');
-            if (btnDeleteScan) {
-                btnDeleteScan.addEventListener('click', function() {
-                    var s = self.activeScanReportSession;
-                    var sessionId = s && s.SessionId ? s.SessionId : null;
-                    self.deleteScanBySessionId(view, sessionId);
-                });
-            }
-
-            // ESC closes modal (bind once)
-            if (!self._scanReportKeydownBound) {
-                self._scanReportKeydownBound = true;
-                document.addEventListener('keydown', function(e) {
-                    if (e.key === 'Escape') {
-                        self.closeScanReport(view);
-                    }
-                });
-            }
         }
 
         // History tab methods
@@ -1223,7 +1301,7 @@ function (BaseView, loading, toast) {
                     html += '<span class="sessionStat errors"><span class="label">Errors: </span><span class="value">' + session.ErrorItems + '</span></span>';
                     html += '</div>';
 
-                    html += '<div class="sessionCta"><span>View report</span><span class="arrow">→</span></div>';
+                    html += '<div class="sessionCta"><span>View report</span></div>';
                     html += '</div>';
                 });
                 

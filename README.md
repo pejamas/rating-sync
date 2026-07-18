@@ -5,16 +5,16 @@
 <h1 align="center">Rating Sync</h1>
 
 <p align="center">
-	An Emby plugin to sync <b>IMDb community ratings</b> and <b>Rotten Tomatoes critic ratings</b> into your library metadata.
+	An Emby plugin to sync IMDb community ratings and Rotten Tomatoes critic ratings into your library metadata.
 	<br />
-	Smart scanning • Rate limiting • Progress tracking • Scan history
+	Smart scanning, rate limiting, progress tracking, and scan history.
 </p>
 
 <p align="center">
-	<a href="#features">Features</a> •
-	<a href="#install">Install</a> •
-	<a href="#quick-start">Quick start</a> •
-	<a href="#ui-tour">Screenshots</a> •
+	<a href="#features">Features</a> ·
+	<a href="#install">Install</a> ·
+	<a href="#quick-start">Quick start</a> ·
+	<a href="#ui-tour">Screenshots</a> ·
 	<a href="https://github.com/pejamas/rating-sync/releases">Download</a>
 </p>
 
@@ -27,28 +27,29 @@
 
 ## Features
 
-- Updates **Movies**, **Series**, and optionally **Episodes**
-- Supports **OMDb** and/or **MDBList** (configurable preferred source)
-- Optional **IMDb scraping fallback** for episode ratings
-- Built-in **rate limiting** + daily limits per API
-- **Smart scanning**: rescan interval, prioritize recently added, skip already-rated (optional)
-- **Progress API** + detailed results (updated/skipped/errors)
-- **Scan history** + per-session reports
-- Missing data views (e.g., missing IMDb id / ratings) and item-level scan history
+- Updates Movies, Series, and optionally Episodes
+- Supports OMDb and/or MDBList (configurable preferred source)
+- Optional IMDb ratings fallback via IMDb official free datasets (page lookup as secondary)
+- Built-in rate limiting and daily limits per API
+- Smart scanning: rescan interval, prioritize recently added, skip already-rated (optional)
+- Progress API with detailed results (updated / skipped / errors)
+- Scan history and per-session reports
+- Missing-data views and item-level scan history
+- Opens from the Emby dashboard sidebar (Server)
 
 ## Install
 
 1. Download `RatingSync.dll` from the latest GitHub Release.
 2. Copy it into your Emby plugins folder (commonly `...\Emby-Server\programdata\plugins\`).
 3. Restart Emby Server.
-4. Configure API keys in Emby Dashboard → Plugins → Rating Sync.
+4. Configure API keys in Emby Dashboard → Plugins → Rating Sync (or open Rating Sync from the sidebar).
 
 ## Quick start
 
-1. Add at least one API key (OMDb and/or MDBList).
+1. Add at least one API key (OMDb and/or MDBList), or enable IMDb ratings fallback alone.
 2. Pick your preferred rating source and what item types to update.
-3. (Optional) Enable episode scraping fallback if you want episode ratings.
-4. Go to the **Run** tab and start a refresh.
+3. Optionally enable IMDb ratings fallback when primary APIs return no community rating.
+4. Open the Run tab and start a refresh.
 
 ## UI tour
 
@@ -82,7 +83,7 @@ Browse recent scans, find items with missing data, and inspect item-level scan h
 
 <img src="docs/screenshots/history.png" alt="Scan history" width="900" />
 
-> Screenshot files live in `docs/screenshots/`.
+Screenshot files live in `docs/screenshots/`.
 
 ## Build
 
@@ -104,7 +105,7 @@ dotnet build -c Release -p:EmbyPath="C:\Program Files\Emby-Server\System"
 ## Release process (automated)
 
 This repo is set up so that pushing a tag like `v1.2.3` will:
-- Build `Release`
+- Build Release
 - Create a GitHub Release
 - Upload `RatingSync.dll` (and a zip) as release assets
 
@@ -113,6 +114,6 @@ See [RELEASING.md](RELEASING.md).
 ## Versioning
 
 Uses Semantic Versioning: `MAJOR.MINOR.PATCH`
-- **PATCH**: bug fixes, small changes
-- **MINOR**: new features (backwards compatible)
-- **MAJOR**: breaking behavior/config/API changes
+- PATCH: bug fixes, small changes
+- MINOR: new features (backwards compatible)
+- MAJOR: breaking behavior/config/API changes

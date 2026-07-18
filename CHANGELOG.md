@@ -6,6 +6,14 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-07-18
+
+- Improvement: Safer Run UX — selected-scan queue failures no longer fall back to a full library scan; targeted series/library scans respect Update Movies/Series/Episodes; IMDb-fallback-only starts are allowed; listeners bind once; cancel/resume status is more accurate.
+- Improvement: Accurate API usage counting (HTTP attempts only, including MDBList show→movie retries); shared HttpClient; delay after remote calls only.
+- Improvement: Progress shows smart-skip counts / status messages, rolling-window ETA, dataset download messages; result rows keyed by item id.
+- Improvement: MDBList community scores only come from an `imdb` source entry (not overall score/10).
+- UI: Cleaner non-pill badges/chips; Rating Sync in the Emby sidebar; clearer Both-source label, test-mode banner, targeted-scan note, scheduled-task copy.
+
 ## [1.0.4] - 2026-07-18
 
 - Fix: `api.imdbapi.dev` is offline; IMDb ratings fallback now uses IMDb’s official free daily datasets (`title.ratings.tsv.gz`, and `title.episode.tsv.gz` when episode IDs are missing), with an improved direct page lookup as a secondary attempt.
