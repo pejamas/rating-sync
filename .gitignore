@@ -22,3 +22,6 @@ packages/
 ## OS
 Thumbs.db
 .DS_Store
+
+## Local AI workspace data
+.workbuddy-ai/

@@ -370,6 +370,9 @@ namespace RatingSync
         public bool Success { get; set; }
         [DataMember]
         public string Message { get; set; }
+        /// <summary>Stable, language-neutral result code so the UI can localize it.</summary>
+        [DataMember]
+        public string Code { get; set; }
     }
 
     [Route("/RatingSync/MissingData", "GET", Summary = "Gets items with missing IMDb or rating data")]
@@ -596,15 +599,15 @@ namespace RatingSync
         public object Post(DeleteScanRequest request)
         {
             if (string.IsNullOrWhiteSpace(request.SessionId))
-                return new DeleteScanResponse { Success = false, Message = "Missing SessionId" };
+                return new DeleteScanResponse { Success = false, Message = "Missing SessionId", Code = "missingSessionId" };
 
-            var result = ScanHistoryManager.DeleteSession(request.SessionId, out var message);
+            var result = ScanHistoryManager.DeleteSession(request.SessionId, out var message, out var code);
             if (result)
             {
                 ScanHistoryManager.Save();
             }
 
-            return new DeleteScanResponse { Success = result, Message = message };
+            return new DeleteScanResponse { Success = result, Message = message, Code = code };
         }
 
         public object Get(GetMissingDataRequest request)
@@ -1050,11 +1053,11 @@ namespace RatingSync
             ImdbDatasetStore.Initialize(applicationPaths.PluginConfigurationsPath);
         }
 
-        public override string Name => "Rating Sync";
+        public override string Name => Strings.T("plugin.name");
 
         public override Guid Id => new Guid("12345678-1234-1234-1234-123456789012");
 
-        public override string Description => "Refreshes community and critic ratings from IMDb and Rotten Tomatoes";
+        public override string Description => Strings.T("plugin.description");
 
         public static Plugin Instance { get; private set; }
 
@@ -1072,7 +1075,7 @@ namespace RatingSync
                 new PluginPageInfo
                 {
                     Name = "RatingSyncConfiguration",
-                    DisplayName = "Rating Sync",
+                    DisplayName = Strings.T("page.displayName"),
                     EmbeddedResourcePath = GetType().Namespace + ".Configuration.configPage.html",
                     EnableInMainMenu = true,
                     // Appears under Advanced in the dashboard sidebar (same area as other plugin tools).
@@ -1655,12 +1658,14 @@ namespace RatingSync
             }
         }
 
-        public static bool DeleteSession(string sessionId, out string message)
+        public static bool DeleteSession(string sessionId, out string message, out string code)
         {
             message = null;
+            code = "failed";
             if (string.IsNullOrWhiteSpace(sessionId))
             {
                 message = "Missing SessionId";
+                code = "missingSessionId";
                 return false;
             }
 
@@ -1670,6 +1675,7 @@ namespace RatingSync
                 if (session == null)
                 {
                     message = "Scan not found";
+                    code = "notFound";
                     return false;
                 }
 
@@ -1677,6 +1683,7 @@ namespace RatingSync
                 if (!session.EndTime.HasValue && !session.WasCancelled)
                 {
                     message = "Cannot delete a scan that is still in progress";
+                    code = "inProgress";
                     return false;
                 }
 
@@ -1691,6 +1698,7 @@ namespace RatingSync
                 catch { }
 
                 message = "Scan deleted";
+                code = "deleted";
                 return true;
             }
         }
@@ -2116,9 +2124,9 @@ namespace RatingSync
             _jsonSerializer = jsonSerializer;
         }
 
-        public string Name => "Refresh IMDb and Rotten Tomatoes Ratings";
+        public string Name => Strings.T("task.name");
 
-        public string Description => "Updates community ratings from IMDb and critic ratings from Rotten Tomatoes";
+        public string Description => Strings.T("task.description");
 
         public string Category => "Library";
 

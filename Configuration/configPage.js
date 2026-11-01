@@ -4,6 +4,605 @@ function (BaseView, loading, toast) {
 
     var pluginId = '12345678-1234-1234-1234-123456789012';
 
+    // =========================================================================
+    // i18n layer
+    // -------------------------------------------------------------------------
+    // 1. STRINGS: key -> text, per locale. en-US mirrors the original wording.
+    // 2. STATIC_ZH: English source text -> Chinese, applied to the HTML template
+    //    by translateDom(). gettext style so configPage.html needs no per-node
+    //    data-i18n attributes.
+    // 3. localizeDetail(): the backend keeps emitting canonical English detail
+    //    strings (they are persisted in scan_history.json and matched with
+    //    indexOf by the report/missing-data filters). We therefore never
+    //    translate them server-side, only at render time.
+    // =========================================================================
+
+    var LOCALE_ZH = 'zh-CN';
+    var LOCALE_EN = 'en-US';
+    var _lang = null;
+
+    var STRINGS = {
+        'en-US': {
+            'api.unavailable': 'API usage unavailable',
+            'api.imdbFallbackLabel': 'IMDb fallback: ',
+            'api.usageOn': 'API usage — {date} (resets 00:00 UTC)',
+            'api.usageToday': 'API usage — today (resets 00:00 UTC)',
+            'api.usage': 'API usage (resets 00:00 UTC)',
+
+            'toast.missingSessionId': 'Missing SessionId',
+            'toast.deleteConfirm': 'Delete this scan? This cannot be undone.',
+            'toast.scanDeleted': 'Scan deleted',
+            'toast.deleteFailed': 'Failed to delete scan',
+            'toast.configLoad': 'Error loading configuration',
+            'toast.configSave': 'Error saving configuration',
+            'toast.saved': 'Settings saved successfully!',
+            'toast.noKeys': 'Configure an OMDb/MDBList key or enable IMDb ratings fallback in Settings.',
+            'toast.noItemTypes': 'Please enable at least one item type in Settings.',
+            'toast.alreadyRunning': 'A rating sync is already running.',
+            'toast.taskNotFound': 'Task not found - restart Emby Server',
+            'toast.failedStart': 'Failed to start task: {err}',
+            'toast.failedQueueSelected': 'Failed to queue selected items. Full library scan was not started.',
+            'toast.selectItemFirst': 'Select an item first.',
+            'toast.unsupportedType': 'Unsupported item type: {type}',
+            'toast.failedQueueOne': 'Failed to queue selected item: {err}',
+            'toast.reportUnavailable': 'Report not available for this scan',
+            'toast.downloadFailed': 'Failed to download report',
+            'toast.noReportToCopy': 'No report to copy',
+            'toast.clipboardUnavailable': 'Clipboard not available in this environment',
+            'toast.reportCopied': 'Report copied',
+            'toast.copyFailed': 'Failed to copy report',
+
+            'del.missingSessionId': 'Missing SessionId',
+            'del.notFound': 'Scan not found',
+            'del.inProgress': 'Cannot delete a scan that is still in progress',
+            'del.deleted': 'Scan deleted',
+            'del.failed': 'Failed to delete scan',
+
+            'opt.allLibraries': 'All Libraries',
+            'opt.allSeries': 'All Series',
+            'opt.allSeasons': 'All Seasons',
+            'opt.allEpisodes': 'All Episodes',
+            'opt.allMovies': 'All Movies',
+            'opt.episodeCount': '({n} episodes)',
+
+            'time.hms': '{h}h {m}m {s}s',
+            'time.hm': '{h}h {m}m',
+            'time.ms': '{m}m {s}s',
+            'time.s': '{s}s',
+
+            'list.noUpdated': 'No items updated yet',
+            'list.noSkipped': 'No items skipped yet',
+            'list.noFailures': 'No failures',
+            'list.showingLatest': 'Showing latest {shown} of {total}',
+
+            'progress.smartSkipped': 'Smart-skipped {n} item(s) before this scan',
+            'progress.elapsed': 'Elapsed: {time}',
+
+            'ui.runningCount': 'Running ({done}/{total})',
+            'ui.starting': 'Starting...',
+            'ui.alreadyRunning': 'Already running',
+            'ui.failedToStart': 'Failed to start',
+            'ui.taskNotFound': 'Task not found',
+            'ui.queuingSelected': 'Queuing selected items...',
+            'ui.queuingSelectedOne': 'Queuing selected item...',
+            'ui.queueFailed': 'Queue failed',
+            'ui.queueFailedOne': 'Failed to queue',
+            'ui.unsupportedType': 'Unsupported item type',
+            'ui.cancelledWith': 'Cancelled — {n} updated',
+            'ui.completedWith': 'Completed! {n} updated',
+            'ui.skippedSuffix': ', {n} skipped',
+            'ui.errorsSuffix': ', {n} errors',
+            'ui.cancelling': 'Cancelling...',
+            'ui.cancelled': 'Cancelled',
+            'ui.ready': 'Ready',
+            'ui.running': 'Running...',
+            'ui.lastRun': 'Last run: {status}',
+            'ui.lastRunCancelled': 'Last run cancelled: {status}',
+            'ui.runSummary': '{u} updated, {s} skipped',
+            'ui.inProgress': 'In progress',
+            'ui.inProgressDots': 'In progress...',
+
+            'history.loading': 'Loading scan history...',
+            'history.empty': 'No scan history yet. Run a scan to see history here.',
+            'history.error': 'Error loading scan history.',
+            'history.total': 'Total: ',
+            'history.updated': 'Updated: ',
+            'history.skipped': 'Skipped: ',
+            'history.errors': 'Errors: ',
+            'history.delete': 'Delete',
+            'history.viewReport': 'View report',
+            'history.cancelledSuffix': ' (Cancelled)',
+
+            'report.title': 'Scan Report',
+            'report.titleWithDate': 'Scan Report — {date}',
+            'report.loading': 'Loading scan report...',
+            'report.noData': 'No report data found.',
+            'report.legacy': '<strong>Legacy scan:</strong> this scan ran before detailed reports were enabled, so only limited info may be available.',
+            'report.searchPlaceholder': 'Search (name or details)…',
+            'report.perPage': '{n} / page',
+            'report.downloadJson': 'Download JSON',
+            'report.overview': 'Overview',
+            'report.updated': 'Updated',
+            'report.skipped': 'Skipped',
+            'report.errors': 'Errors',
+            'report.updatedItems': 'Updated Items',
+            'report.skippedItems': 'Skipped Items',
+            'report.byType': 'Updated — by type',
+            'report.bySource': 'Updated — by source',
+            'report.topSkip': 'Skipped — top reasons',
+            'report.topErrors': 'Errors — top messages',
+            'report.noDataChip': 'No data.',
+            'report.showing': 'Showing {from}-{to} of {total}',
+            'report.prev': 'Prev',
+            'report.next': 'Next',
+            'report.noItems': 'No items.',
+            'report.started': 'Started',
+            'report.finished': 'Finished',
+            'report.duration': 'Duration',
+            'report.processed': 'Processed',
+            'report.omdbCalls': 'OMDb calls',
+            'report.mdbCalls': 'MDBList calls',
+            'report.imdbFallback': 'IMDb fallback',
+            'report.status': 'Status',
+            'report.typeBoth': 'IMDb + RT',
+            'report.typeImdb': 'IMDb only',
+            'report.typeRt': 'RT only',
+            'report.typeOther': 'Other',
+            'report.unknown': 'Unknown',
+            'report.statusCompleted': 'Completed',
+            'report.statusCompletedWithErrors': 'Completed with errors',
+
+            'copy.title': 'Rating Sync - Scan Report',
+            'copy.started': 'Started: ',
+            'copy.finished': 'Finished: ',
+            'copy.total': 'Total: ',
+            'copy.processed': 'Processed: ',
+
+            'missing.searching': 'Searching for items with missing data...',
+            'missing.none': 'No items found with missing data. Great job!',
+            'missing.error': 'Error searching for missing data.',
+            'missing.noMatch': 'No items match the selected filters.',
+            'missing.colName': 'Name',
+            'missing.colSeries': 'Series',
+            'missing.colSeason': 'Season',
+            'missing.colType': 'Type',
+            'missing.colImdb': 'IMDb ID',
+            'missing.colCommunity': 'Community Rating',
+            'missing.colCritic': 'Critic Rating',
+            'missing.colIssue': 'Issue',
+            'missing.showing': 'Showing {n} items (max 500)',
+
+            'itemhist.loading': 'Searching item history...',
+            'itemhist.none': 'No items found matching "{q}".',
+            'itemhist.error': 'Error searching item history.',
+            'itemhist.colName': 'Name',
+            'itemhist.colType': 'Type',
+            'itemhist.colLastScanned': 'Last Scanned',
+            'itemhist.colCurrent': 'Current Rating',
+            'itemhist.colLastChange': 'Last Change',
+
+            'type.movie': 'Movie',
+            'type.series': 'Series',
+            'type.episode': 'Episode',
+            'type.unknown': 'Unknown'
+        },
+
+        'zh-CN': {
+            'api.unavailable': 'API 用量不可用',
+            'api.imdbFallbackLabel': 'IMDb 回退：',
+            'api.usageOn': 'API 用量 — {date}（UTC 00:00 重置）',
+            'api.usageToday': 'API 用量 — 今天（UTC 00:00 重置）',
+            'api.usage': 'API 用量（UTC 00:00 重置）',
+
+            'toast.missingSessionId': '缺少 SessionId',
+            'toast.deleteConfirm': '确定删除这条扫描记录？此操作不可撤销。',
+            'toast.scanDeleted': '扫描记录已删除',
+            'toast.deleteFailed': '删除扫描记录失败',
+            'toast.configLoad': '加载配置失败',
+            'toast.configSave': '保存配置失败',
+            'toast.saved': '设置已保存！',
+            'toast.noKeys': '请先在设置中填写 OMDb / MDBList 密钥，或启用 IMDb 评分回退。',
+            'toast.noItemTypes': '请先在设置中至少启用一种项目类型。',
+            'toast.alreadyRunning': '已有评分同步任务在运行。',
+            'toast.taskNotFound': '未找到任务 - 请重启 Emby 服务器',
+            'toast.failedStart': '启动任务失败：{err}',
+            'toast.failedQueueSelected': '所选项目加入队列失败，未启动全库扫描。',
+            'toast.selectItemFirst': '请先选择一个项目。',
+            'toast.unsupportedType': '不支持的项目类型：{type}',
+            'toast.failedQueueOne': '所选项目加入队列失败：{err}',
+            'toast.reportUnavailable': '本次扫描没有可用报告',
+            'toast.downloadFailed': '下载报告失败',
+            'toast.noReportToCopy': '没有可复制的报告',
+            'toast.clipboardUnavailable': '当前环境不支持剪贴板',
+            'toast.reportCopied': '报告已复制',
+            'toast.copyFailed': '复制报告失败',
+
+            'del.missingSessionId': '缺少 SessionId',
+            'del.notFound': '未找到该扫描记录',
+            'del.inProgress': '无法删除仍在进行中的扫描',
+            'del.deleted': '扫描记录已删除',
+            'del.failed': '删除扫描记录失败',
+
+            'opt.allLibraries': '全部媒体库',
+            'opt.allSeries': '全部剧集',
+            'opt.allSeasons': '全部季',
+            'opt.allEpisodes': '全部单集',
+            'opt.allMovies': '全部电影',
+            'opt.episodeCount': '（{n} 集）',
+
+            'time.hms': '{h} 时 {m} 分 {s} 秒',
+            'time.hm': '{h} 时 {m} 分',
+            'time.ms': '{m} 分 {s} 秒',
+            'time.s': '{s} 秒',
+
+            'list.noUpdated': '暂无已更新项目',
+            'list.noSkipped': '暂无已跳过项目',
+            'list.noFailures': '无失败项',
+            'list.showingLatest': '仅显示最近 {shown} 条，共 {total} 条',
+
+            'progress.smartSkipped': '本次扫描前已智能跳过 {n} 个项目',
+            'progress.elapsed': '已用时：{time}',
+
+            'ui.runningCount': '运行中（{done}/{total}）',
+            'ui.starting': '正在启动…',
+            'ui.alreadyRunning': '已在运行',
+            'ui.failedToStart': '启动失败',
+            'ui.taskNotFound': '未找到任务',
+            'ui.queuingSelected': '正在加入所选项目…',
+            'ui.queuingSelectedOne': '正在加入所选项目…',
+            'ui.queueFailed': '加入队列失败',
+            'ui.queueFailedOne': '加入队列失败',
+            'ui.unsupportedType': '不支持的项目类型',
+            'ui.cancelledWith': '已取消 — 更新 {n} 项',
+            'ui.completedWith': '已完成！更新 {n} 项',
+            'ui.skippedSuffix': '，跳过 {n} 项',
+            'ui.errorsSuffix': '，错误 {n} 项',
+            'ui.cancelling': '正在取消…',
+            'ui.cancelled': '已取消',
+            'ui.ready': '就绪',
+            'ui.running': '运行中…',
+            'ui.lastRun': '上次运行：{status}',
+            'ui.lastRunCancelled': '上次运行已取消：{status}',
+            'ui.runSummary': '更新 {u} 项，跳过 {s} 项',
+            'ui.inProgress': '进行中',
+            'ui.inProgressDots': '进行中…',
+
+            'history.loading': '正在加载扫描历史…',
+            'history.empty': '暂无扫描历史。运行一次扫描后即可在此查看。',
+            'history.error': '加载扫描历史失败。',
+            'history.total': '总计：',
+            'history.updated': '已更新：',
+            'history.skipped': '已跳过：',
+            'history.errors': '错误：',
+            'history.delete': '删除',
+            'history.viewReport': '查看报告',
+            'history.cancelledSuffix': '（已取消）',
+
+            'report.title': '扫描报告',
+            'report.titleWithDate': '扫描报告 — {date}',
+            'report.loading': '正在加载扫描报告…',
+            'report.noData': '未找到报告数据。',
+            'report.legacy': '<strong>历史扫描：</strong>该次扫描早于详细报告功能上线，可能只有有限信息。',
+            'report.searchPlaceholder': '搜索（名称或明细）…',
+            'report.perPage': '每页 {n} 条',
+            'report.downloadJson': '下载 JSON',
+            'report.overview': '概览',
+            'report.updated': '已更新',
+            'report.skipped': '已跳过',
+            'report.errors': '错误',
+            'report.updatedItems': '已更新项目',
+            'report.skippedItems': '已跳过项目',
+            'report.byType': '已更新 — 按类型',
+            'report.bySource': '已更新 — 按数据源',
+            'report.topSkip': '已跳过 — 主要原因',
+            'report.topErrors': '错误 — 主要信息',
+            'report.noDataChip': '暂无数据。',
+            'report.showing': '显示第 {from}-{to} 条，共 {total} 条',
+            'report.prev': '上一页',
+            'report.next': '下一页',
+            'report.noItems': '暂无项目。',
+            'report.started': '开始时间',
+            'report.finished': '结束时间',
+            'report.duration': '耗时',
+            'report.processed': '已处理',
+            'report.omdbCalls': 'OMDb 调用',
+            'report.mdbCalls': 'MDBList 调用',
+            'report.imdbFallback': 'IMDb 回退',
+            'report.status': '状态',
+            'report.typeBoth': 'IMDb + 烂番茄',
+            'report.typeImdb': '仅 IMDb',
+            'report.typeRt': '仅烂番茄',
+            'report.typeOther': '其他',
+            'report.unknown': '未知',
+            'report.statusCompleted': '已完成',
+            'report.statusCompletedWithErrors': '已完成（有错误）',
+
+            'copy.title': '评分同步 - 扫描报告',
+            'copy.started': '开始：',
+            'copy.finished': '结束：',
+            'copy.total': '总计：',
+            'copy.processed': '已处理：',
+
+            'missing.searching': '正在搜索数据缺失的项目…',
+            'missing.none': '没有发现数据缺失的项目，很完美！',
+            'missing.error': '搜索缺失数据失败。',
+            'missing.noMatch': '没有符合当前筛选条件的项目。',
+            'missing.colName': '名称',
+            'missing.colSeries': '剧集',
+            'missing.colSeason': '季',
+            'missing.colType': '类型',
+            'missing.colImdb': 'IMDb ID',
+            'missing.colCommunity': '社区评分',
+            'missing.colCritic': '影评人评分',
+            'missing.colIssue': '问题',
+            'missing.showing': '共显示 {n} 个项目（最多 500）',
+
+            'itemhist.loading': '正在搜索项目历史…',
+            'itemhist.none': '未找到匹配「{q}」的项目。',
+            'itemhist.error': '搜索项目历史失败。',
+            'itemhist.colName': '名称',
+            'itemhist.colType': '类型',
+            'itemhist.colLastScanned': '上次扫描',
+            'itemhist.colCurrent': '当前评分',
+            'itemhist.colLastChange': '上次变更',
+
+            'type.movie': '电影',
+            'type.series': '剧集',
+            'type.episode': '单集',
+            'type.unknown': '未知'
+        }
+    };
+
+    // English source text in configPage.html -> Chinese. Longest keys first is
+    // not required (exact trimmed match), but fragment keys must be exact.
+    var STATIC_ZH = {
+        'Settings': '设置',
+        'Run': '运行',
+        'History': '历史',
+        'Loading API usage…': '正在加载 API 用量…',
+        'API Keys': 'API 密钥',
+        'Get free API keys to enable rating updates:': '获取免费 API 密钥以启用评分更新：',
+        'Get free key': '获取免费密钥',
+        'OMDb API Key': 'OMDb API 密钥',
+        'API key for OMDb (http://www.omdbapi.com)': 'OMDb 的 API 密钥（http://www.omdbapi.com）',
+        'MDBList API Key': 'MDBList API 密钥',
+        'API key for MDBList (https://mdblist.com)': 'MDBList 的 API 密钥（https://mdblist.com）',
+        'Rating Options': '评分选项',
+        'Preferred Rating Source': '首选评分数据源',
+        'OMDb (fallback to MDBList)': 'OMDb（无结果时回退 MDBList）',
+        'MDBList (fallback to OMDb)': 'MDBList（无结果时回退 OMDb）',
+        'Both (OMDb first, then MDBList for gaps)': '两者（先用 OMDb，缺失项再用 MDBList）',
+        "Choose which source to prioritize. If a rating isn't found, the other source will be tried.": '选择优先使用哪个数据源。若未找到评分，会尝试另一个数据源。',
+        'Update Critic Rating (Rotten Tomatoes)': '更新影评人评分（烂番茄）',
+        'When enabled, also updates the critic rating with Rotten Tomatoes scores.': '启用后会同时用烂番茄评分更新影评人评分。',
+        'Item Types to Update': '要更新的项目类型',
+        'Select which types of media to update ratings for:': '选择要为哪些媒体类型更新评分：',
+        'Movies': '电影',
+        'TV Series': '剧集',
+        'TV Episodes': '单集',
+        'Note:': '注意：',
+        'Episodes use OMDb and/or the IMDb ratings fallback (MDBList does not support episode lookups). Enabling episodes increases API/dataset work.': '单集使用 OMDb 和/或 IMDb 评分回退（MDBList 不支持单集查询）。启用单集会增加 API / 数据集的请求量。',
+        'Enable IMDb ratings fallback when primary APIs return no community rating': '当主要 API 未返回社区评分时，启用 IMDb 评分回退',
+        'Uses IMDb’s free official ratings dataset (': '使用 IMDb 免费官方评分数据集（',
+        ', refreshed about daily, no API key). Also tries a direct title-page lookup when possible. Applies to movies, series, and episodes.': '，约每日更新，无需 API Key）。在可能时还会直接查询标题页面。适用于电影、剧集和单集。',
+        'API Rate Limiting': 'API 速率限制',
+        'Configure rate limits based on your API subscription tiers:': '根据你的 API 订阅等级配置速率限制：',
+        'Enable daily limit': '启用每日上限',
+        'Daily Limit': '每日上限',
+        'Free tier: 1,000/day': '免费额度：1,000 次/天',
+        'Smart Scanning': '智能扫描',
+        'Optimize scanning to focus on new content and avoid redundant API calls:': '优化扫描策略，聚焦新内容并避免重复的 API 请求：',
+        'Rescan Interval (Days)': '重扫间隔（天）',
+        'Skip items that have been scanned within this many days. Default: 30': '跳过在此天数内已扫描过的项目。默认：30',
+        'Prioritize Recently Added Content': '优先处理最近添加的内容',
+        'Recently Added Period (Days)': '最近添加时间范围（天）',
+        'Items added within this period are processed first. Default: 7': '在此时间范围内添加的项目会优先处理。默认：7',
+        'Only Scan Unrated Items': '仅扫描未评分项目',
+        'When enabled, skips items that already have a community rating.': '启用后跳过已有社区评分的项目。',
+        'Tip:': '提示：',
+        'With a free API tier (1,000 requests/day), a library of 5,000 items would take ~5 days for a full scan. Smart scanning ensures newly added content gets ratings immediately.': '在免费 API 额度下（1,000 次/天），5,000 个项目全量扫描约需 5 天。智能扫描可确保新添加的内容立即获得评分。',
+        'Testing': '测试',
+        'Test Mode (Process Only One Item)': '测试模式（仅处理一个项目）',
+        'RECOMMENDED FOR FIRST RUN:': '建议首次运行时使用：',
+        'When enabled, only processes the first item found to test if everything is working correctly. Disable this to process your entire library.': '启用后只处理找到的第一个项目，用于验证配置是否正确。关闭后处理整个媒体库。',
+        'Save': '保存',
+        'Run Rating Refresh': '运行评分刷新',
+        'Manually trigger a rating refresh. Select specific items or run on your entire library.': '手动触发评分刷新。可选择特定项目，也可对整个媒体库运行。',
+        'Test mode is on': '测试模式已开启',
+        '— only the first matching item will be processed.': '——只会处理第一个匹配的项目。',
+        'Targeted library/series/episode scans ignore smart-scan skip rules (rescan interval / already rated).': '指定媒体库 / 剧集 / 单集的扫描会忽略智能扫描跳过规则（重扫间隔 / 已有评分）。',
+        'Library': '媒体库',
+        'All Libraries': '全部媒体库',
+        'All Series': '全部剧集',
+        'Season': '季',
+        'All Seasons': '全部季',
+        'Episode': '单集',
+        'All Episodes': '全部单集',
+        'Movie': '电影',
+        'All Movies': '全部电影',
+        'Added Within': '添加时间',
+        'All time': '全部时间',
+        'Today': '今天',
+        'Last 7 days': '最近 7 天',
+        'Last 30 days': '最近 30 天',
+        'Last 90 days': '最近 90 天',
+        'Last 365 days': '最近 365 天',
+        'Filters "All Movies" / "All Series" runs to only items added in that period.': '仅对「全部电影」/「全部剧集」生效，只处理该时间段内添加的项目。',
+        'Ready': '就绪',
+        'ETA:': '预计剩余：',
+        'Start Refresh': '开始刷新',
+        'Stop': '停止',
+        'Clear Results': '清除结果',
+        'Currently Processing': '正在处理',
+        'Processed': '已处理',
+        'Updated': '已更新',
+        'Skipped': '已跳过',
+        'Errors': '错误',
+        'Failures': '失败',
+        'No items updated yet': '暂无已更新项目',
+        'No items skipped yet': '暂无已跳过项目',
+        'No failures': '无失败项',
+        'Scheduled Task': '计划任务',
+        'This also runs as an Emby scheduled task. View or change the schedule under': '本插件也会作为 Emby 计划任务运行。可在服务器设置的',
+        'Scheduled Tasks': '计划任务',
+        'in server settings (default is daily).': '中查看或修改执行时间（默认为每天）。',
+        'Scan History': '扫描历史',
+        'View past scans and search your library for items with missing data.': '查看历史扫描记录，并搜索媒体库中缺失数据的项目。',
+        'Recent Scans': '最近扫描',
+        'Loading scan history...': '正在加载扫描历史…',
+        'Scan Report': '扫描报告',
+        'Copy': '复制',
+        'Delete': '删除',
+        'Close': '关闭',
+        'Items Missing Data': '数据缺失项目',
+        'All Types': '全部类型',
+        'Series': '剧集',
+        'Episodes': '单集',
+        'All Missing': '全部缺失',
+        'No IMDb ID': '无 IMDb ID',
+        'No Community Rating': '无社区评分',
+        'No Critic Rating': '无影评人评分',
+        '🔍 Find Missing': '🔍 查找缺失',
+        'Scan Selected': '扫描所选',
+        'Tip: click a row to select it, then click "Scan Selected".': '提示：点击一行选中它，然后点击「扫描所选」。',
+        'Click "Find Missing" to search for items without IMDb IDs or ratings.': '点击「查找缺失」搜索缺少 IMDb ID 或评分的项目。',
+        'Item Scan History': '项目扫描历史',
+        '🔍 Search': '🔍 搜索',
+        'Search for items to see their scan history.': '搜索项目以查看其扫描历史。',
+        'Search by item name...': '按项目名称搜索…',
+        'Rating Sync': '评分同步'
+    };
+
+    // Backend detail strings stay canonical English (persisted + matched with
+    // indexOf). Translate at render time only. Order matters: longer first.
+    var DETAIL_ZH = [
+        ['No rating sources configured. Add an OMDb/MDBList key or enable IMDb ratings fallback.', '未配置评分数据源。请添加 OMDb / MDBList 密钥，或启用 IMDb 评分回退。'],
+        ['All configured APIs have reached their daily limits. Task will resume tomorrow.', '所有已配置的 API 均已达到每日限额，任务将在明天继续。'],
+        ['Selected scan queue was empty or expired. Try Start again.', '所选扫描队列为空或已过期，请重新点击开始。'],
+        ['No item types selected. Enable at least one item type in settings.', '未选择任何项目类型，请在设置中至少启用一种。'],
+        ['Nothing to process for the current selection/settings.', '当前选择 / 设置下没有需要处理的项目。'],
+        ['Nothing to process (', '没有需要处理的项目（'],
+        [' smart-skipped by rescan/unrated filters).', ' 项被重扫 / 未评分筛选智能跳过）。'],
+        ['Targeted scan (smart-scan filters bypassed)', '指定扫描（已跳过智能扫描筛选）'],
+        ['Preparing IMDb ratings dataset', '正在准备 IMDb 评分数据集'],
+        ['Stopped: daily API limits reached', '已停止：已达到每日 API 限额'],
+        ['IMDb ratings fallback disabled in plugin settings', '插件设置中已关闭 IMDb 评分回退'],
+        ['no sources ran (missing API keys, limits, or IMDb id)', '未执行任何数据源（缺少 API Key、达到限额或缺少 IMDb ID）'],
+        ['No scores available, consulted ', '无可用评分，已查询 '],
+        ['Add an OMDb key or enable IMDb ratings fallback for episode IMDb ratings.', '请添加 OMDb 密钥，或启用 IMDb 评分回退以获取单集 IMDb 评分。'],
+        ['Sources returned no usable IMDb or RT data for this item (new or unrated episodes are common).', '数据源未返回该项目的可用 IMDb 或烂番茄数据（新剧集或未评分剧集较常见）。'],
+        ['No changes needed, consulted ', '无需更改，已查询 '],
+        ['Already up to date, ', '已是最新，'],
+        ['IMDb community already matches library', 'IMDb 社区评分已与媒体库一致'],
+        ['RT critic already matches library', '烂番茄影评评分已与媒体库一致'],
+        ['IMDb community score not returned by consulted sources', '已查询的数据源未返回 IMDb 社区评分'],
+        ['RT critic score not returned by consulted sources', '已查询的数据源未返回烂番茄影评评分'],
+        ['Skipped episode, missing season or episode index in library metadata', '已跳过：媒体库元数据缺少季或集序号'],
+        ['IMDb ratings dataset', 'IMDb 评分数据集'],
+        ['IMDb episode index dataset', 'IMDb 单集索引数据集'],
+        ['IMDb dataset + page', 'IMDb 数据集 + 页面'],
+        ['IMDb page lookup', 'IMDb 页面查询'],
+        ['IMDb dataset', 'IMDb 数据集'],
+        ['IMDb page', 'IMDb 页面'],
+        ['IMDb community ', 'IMDb 社区评分 '],
+        ['RT critic ', '烂番茄影评评分 '],
+        ['No IMDb ID', '无 IMDb ID'],
+        ['No Community Rating', '无社区评分'],
+        ['No Critic Rating', '无影评人评分'],
+        ['Smart-skipped ', '已智能跳过 '],
+        [' item(s) before this scan', ' 个项目（本次扫描前）'],
+        [' item(s) before scan', ' 个项目（本次扫描前）'],
+        ['IMDb episode index: ', 'IMDb 单集索引：'],
+        ['Queued ', '已加入队列 '],
+        [' items for selected scan', ' 个项目（指定扫描）'],
+        [' items (added last ', ' 个项目（添加于最近 '],
+        [' day(s))', ' 天）'],
+        ['Downloading ', '正在下载 '],
+        [' (none)', '（无）'],
+        [' none ', ' 无 '],
+        ['...', '…']
+    ];
+
+    function detectLang() {
+        if (_lang) return _lang;
+        var raw = '';
+        try {
+            if (typeof ApiClient !== 'undefined' && ApiClient.getCurrentLocale) {
+                raw = ApiClient.getCurrentLocale() || '';
+            }
+        } catch (e) { raw = ''; }
+        if (!raw) {
+            try { raw = navigator.language || (navigator.languages && navigator.languages[0]) || ''; } catch (e) { raw = ''; }
+        }
+        _lang = /^zh/i.test(String(raw)) ? LOCALE_ZH : LOCALE_EN;
+        return _lang;
+    }
+
+    function formatText(text, args) {
+        if (text == null) return '';
+        if (!args) return text;
+        return String(text).replace(/\{(\w+)\}/g, function (m, name) {
+            return (args[name] === undefined || args[name] === null) ? m : String(args[name]);
+        });
+    }
+
+    function t(key, args) {
+        var table = STRINGS[detectLang()] || STRINGS[LOCALE_EN];
+        var text = table[key];
+        if (text === undefined) text = STRINGS[LOCALE_EN][key];
+        if (text === undefined) return key;
+        return formatText(text, args);
+    }
+
+    function localizeDetail(text) {
+        if (text == null || text === '') return '';
+        if (detectLang() !== LOCALE_ZH) return String(text);
+        var out = String(text);
+        for (var i = 0; i < DETAIL_ZH.length; i++) {
+            if (out.indexOf(DETAIL_ZH[i][0]) >= 0) {
+                out = out.split(DETAIL_ZH[i][0]).join(DETAIL_ZH[i][1]);
+            }
+        }
+        return out;
+    }
+
+    function typeLabel(type) {
+        var key = 'type.' + String(type || '').toLowerCase();
+        var table = STRINGS[detectLang()] || STRINGS[LOCALE_EN];
+        return table[key] !== undefined ? t(key) : (type || t('type.unknown'));
+    }
+
+    function translateDom(root) {
+        if (!root || detectLang() !== LOCALE_ZH) return;
+        try {
+            var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
+            var nodes = [];
+            var node;
+            while ((node = walker.nextNode())) nodes.push(node);
+            nodes.forEach(function (n) {
+                var raw = n.nodeValue;
+                if (!raw) return;
+                var key = raw.trim();
+                if (!key) return;
+                var zh = STATIC_ZH[key];
+                if (zh === undefined) return;
+                n.nodeValue = raw.replace(key, zh);
+            });
+            Array.prototype.forEach.call(root.querySelectorAll('[placeholder]'), function (el) {
+                var v = el.getAttribute('placeholder');
+                var zh = STATIC_ZH[v];
+                if (zh !== undefined) el.setAttribute('placeholder', zh);
+            });
+            Array.prototype.forEach.call(root.querySelectorAll('[data-title]'), function (el) {
+                var v = el.getAttribute('data-title');
+                var zh = STATIC_ZH[v];
+                if (zh !== undefined) el.setAttribute('data-title', zh);
+            });
+        } catch (e) {
+            console.error('i18n: translateDom failed', e);
+        }
+    }
+
     return class extends BaseView {
         constructor(view, params) {
             super(view, params);
@@ -67,12 +666,12 @@ function (BaseView, loading, toast) {
                 var text = self.formatApiCounters(data);
                 Array.prototype.forEach.call(nodes, function(n) { n.innerHTML = text; });
             }).catch(function() {
-                Array.prototype.forEach.call(nodes, function(n) { n.textContent = 'API usage unavailable'; });
+                Array.prototype.forEach.call(nodes, function(n) { n.textContent = t('api.unavailable'); });
             });
         }
 
         formatApiCounters(data) {
-            if (!data) return 'API usage unavailable';
+            if (!data) return t('api.unavailable');
 
             var today = data.Today ? String(data.Today) : '';
             var todayLabel = '';
@@ -96,15 +695,15 @@ function (BaseView, loading, toast) {
                 mdbText = 'MDBList: ' + (data.MdbListUsed || 0) + (data.MdbListRateLimitEnabled && data.MdbListLimit ? ('/' + data.MdbListLimit) : '');
             }
 
-            var imdbText = 'IMDb fallback: ' + (data.ImdbScrapesUsed || 0);
+            var imdbText = t('api.imdbFallbackLabel') + (data.ImdbScrapesUsed || 0);
 
             var html = '';
             if (todayLabel) {
-                html += '<span style="opacity:0.78;margin-right:0.6em">' + this.escapeHtml('API usage — ' + todayLabel + ' (resets 00:00 UTC)') + '</span>';
+                html += '<span style="opacity:0.78;margin-right:0.6em">' + this.escapeHtml(t('api.usageOn', { date: todayLabel })) + '</span>';
             } else if (today) {
-                html += '<span style="opacity:0.78;margin-right:0.6em">API usage — today (resets 00:00 UTC)</span>';
+                html += '<span style="opacity:0.78;margin-right:0.6em">' + t('api.usageToday') + '</span>';
             } else {
-                html += '<span style="opacity:0.78;margin-right:0.6em">API usage (resets 00:00 UTC)</span>';
+                html += '<span style="opacity:0.78;margin-right:0.6em">' + t('api.usage') + '</span>';
             }
             html += '<span class="apiBadge"><span class="apiDot omdb"></span><span>' + this.escapeHtml(omdbText) + '</span></span>';
             html += '<span class="apiBadge"><span class="apiDot mdblist"></span><span>' + this.escapeHtml(mdbText) + '</span></span>';
@@ -115,11 +714,11 @@ function (BaseView, loading, toast) {
         deleteScanBySessionId(view, sessionId) {
             var self = this;
             if (!sessionId) {
-                toast('Missing SessionId');
+                toast(t('toast.missingSessionId'));
                 return;
             }
 
-            if (!confirm('Delete this scan? This cannot be undone.')) {
+            if (!confirm(t('toast.deleteConfirm'))) {
                 return;
             }
 
@@ -131,7 +730,7 @@ function (BaseView, loading, toast) {
                 dataType: 'json'
             }).then(function(res) {
                 if (res && res.Success) {
-                    toast('Scan deleted');
+                    toast(t('toast.scanDeleted'));
                     if (self.activeScanReportSession && self.activeScanReportSession.SessionId === sessionId) {
                         self.closeScanReport(view);
                         self.activeScanReportSession = null;
@@ -139,10 +738,13 @@ function (BaseView, loading, toast) {
                     }
                     self.loadScanHistory(view);
                 } else {
-                    toast((res && res.Message) ? res.Message : 'Failed to delete scan');
+                    var code = res && res.Code ? String(res.Code) : '';
+                    var msg = code ? t('del.' + code) : '';
+                    if (!msg || msg.indexOf('del.') === 0) msg = t('toast.deleteFailed');
+                    toast(msg);
                 }
             }).catch(function() {
-                toast('Failed to delete scan');
+                toast(t('toast.deleteFailed'));
             });
         }
 
@@ -181,7 +783,7 @@ function (BaseView, loading, toast) {
                 dataType: 'json'
             }).then(function(libraries) {
                 var select = view.querySelector('#selectLibrary');
-                select.innerHTML = '<option value="">All Libraries</option>';
+                select.innerHTML = '<option value="">' + t('opt.allLibraries') + '</option>';
                 libraries.forEach(function(lib) {
                     var option = document.createElement('option');
                     option.value = lib.Id;
@@ -253,17 +855,17 @@ function (BaseView, loading, toast) {
             var seasonSelect = view.querySelector('#selectSeason');
             var episodeSelect = view.querySelector('#selectEpisode');
             
-            seriesSelect.innerHTML = '<option value="">All Series</option>';
+            seriesSelect.innerHTML = '<option value="">' + t('opt.allSeries') + '</option>';
             seriesSelect.disabled = true;
-            seasonSelect.innerHTML = '<option value="">All Seasons</option>';
+            seasonSelect.innerHTML = '<option value="">' + t('opt.allSeasons') + '</option>';
             seasonSelect.disabled = true;
-            episodeSelect.innerHTML = '<option value="">All Episodes</option>';
+            episodeSelect.innerHTML = '<option value="">' + t('opt.allEpisodes') + '</option>';
             episodeSelect.disabled = true;
         }
 
         resetMovieSelection(view) {
             var movieSelect = view.querySelector('#selectMovie');
-            movieSelect.innerHTML = '<option value="">All Movies</option>';
+            movieSelect.innerHTML = '<option value="">' + t('opt.allMovies') + '</option>';
             movieSelect.disabled = true;
         }
 
@@ -271,7 +873,7 @@ function (BaseView, loading, toast) {
             var self = this;
             var movieSelect = view.querySelector('#selectMovie');
             
-            movieSelect.innerHTML = '<option value="">All Movies</option>';
+            movieSelect.innerHTML = '<option value="">' + t('opt.allMovies') + '</option>';
             movieSelect.disabled = true;
             
             var url = libraryId 
@@ -309,11 +911,11 @@ function (BaseView, loading, toast) {
             var episodeSelect = view.querySelector('#selectEpisode');
             
             // Reset downstream dropdowns
-            seriesSelect.innerHTML = '<option value="">All Series</option>';
+            seriesSelect.innerHTML = '<option value="">' + t('opt.allSeries') + '</option>';
             seriesSelect.disabled = true;
-            seasonSelect.innerHTML = '<option value="">All Seasons</option>';
+            seasonSelect.innerHTML = '<option value="">' + t('opt.allSeasons') + '</option>';
             seasonSelect.disabled = true;
-            episodeSelect.innerHTML = '<option value="">All Episodes</option>';
+            episodeSelect.innerHTML = '<option value="">' + t('opt.allEpisodes') + '</option>';
             episodeSelect.disabled = true;
             
             // Always load series (even without library filter)
@@ -351,9 +953,9 @@ function (BaseView, loading, toast) {
             var episodeSelect = view.querySelector('#selectEpisode');
             
             // Reset downstream dropdowns
-            seasonSelect.innerHTML = '<option value="">All Seasons</option>';
+            seasonSelect.innerHTML = '<option value="">' + t('opt.allSeasons') + '</option>';
             seasonSelect.disabled = true;
-            episodeSelect.innerHTML = '<option value="">All Episodes</option>';
+            episodeSelect.innerHTML = '<option value="">' + t('opt.allEpisodes') + '</option>';
             episodeSelect.disabled = true;
             
             if (!seriesId) return;
@@ -368,7 +970,7 @@ function (BaseView, loading, toast) {
                     seasons.forEach(function(s) {
                         var option = document.createElement('option');
                         option.value = s.Id;
-                        option.textContent = s.Name + ' (' + s.EpisodeCount + ' episodes)';
+                        option.textContent = s.Name + ' ' + t('opt.episodeCount', { n: s.EpisodeCount });
                         seasonSelect.appendChild(option);
                     });
                 }
@@ -382,7 +984,7 @@ function (BaseView, loading, toast) {
             var episodeSelect = view.querySelector('#selectEpisode');
             
             // Reset dropdown
-            episodeSelect.innerHTML = '<option value="">All Episodes</option>';
+            episodeSelect.innerHTML = '<option value="">' + t('opt.allEpisodes') + '</option>';
             episodeSelect.disabled = true;
             
             if (!seasonId) return;
@@ -516,7 +1118,7 @@ function (BaseView, loading, toast) {
             }).catch(function (err) {
                 console.error('Error loading config:', err);
                 loading.hide();
-                toast({ text: 'Error loading configuration' });
+                toast({ text: t('toast.configLoad') });
             });
         }
 
@@ -554,16 +1156,16 @@ function (BaseView, loading, toast) {
 
                 ApiClient.updatePluginConfiguration(pluginId, config).then(function () {
                     loading.hide();
-                    toast({ text: 'Settings saved successfully!' });
+                    toast({ text: t('toast.saved') });
                 }).catch(function (err) {
                     console.error('Error saving config:', err);
                     loading.hide();
-                    toast({ text: 'Error saving configuration' });
+                    toast({ text: t('toast.configSave') });
                 });
             }).catch(function (err) {
                 console.error('Error getting config:', err);
                 loading.hide();
-                toast({ text: 'Error saving configuration' });
+                toast({ text: t('toast.configSave') });
             });
         }
 
@@ -581,11 +1183,11 @@ function (BaseView, loading, toast) {
             mins = mins % 60;
             
             if (hours > 0) {
-                return hours + 'h ' + mins + 'm ' + secs + 's';
+                return t('time.hms', { h: hours, m: mins, s: secs });
             } else if (mins > 0) {
-                return mins + 'm ' + secs + 's';
+                return t('time.ms', { m: mins, s: secs });
             }
-            return secs + 's';
+            return t('time.s', { s: secs });
         }
 
         formatETA(seconds) {
@@ -597,11 +1199,11 @@ function (BaseView, loading, toast) {
             mins = mins % 60;
             
             if (hours > 0) {
-                return hours + 'h ' + mins + 'm';
+                return t('time.hm', { h: hours, m: mins });
             } else if (mins > 0) {
-                return mins + 'm ' + secs + 's';
+                return t('time.ms', { m: mins, s: secs });
             }
-            return secs + 's';
+            return t('time.s', { s: secs });
         }
 
         escapeHtml(text) {
@@ -631,11 +1233,11 @@ function (BaseView, loading, toast) {
                 var emptyLi = document.createElement('li');
                 emptyLi.className = 'resultEmpty';
                 if (type === 'success') {
-                    emptyLi.textContent = 'No items updated yet';
+                    emptyLi.textContent = t('list.noUpdated');
                 } else if (type === 'skipped') {
-                    emptyLi.textContent = 'No items skipped yet';
+                    emptyLi.textContent = t('list.noSkipped');
                 } else {
-                    emptyLi.textContent = 'No failures';
+                    emptyLi.textContent = t('list.noFailures');
                 }
                 list.appendChild(emptyLi);
                 return;
@@ -657,14 +1259,14 @@ function (BaseView, loading, toast) {
                 var li = document.createElement('li');
                 li.className = 'resultItem ' + type;
                 li.innerHTML = '<span class="resultItemName">' + this.escapeHtml(name) + '</span>' +
-                              '<span class="resultItemDetail">' + this.escapeHtml(detail) + '</span>';
+                              '<span class="resultItemDetail">' + this.escapeHtml(localizeDetail(detail)) + '</span>';
                 list.appendChild(li);
             }, this);
 
             if (keys.length > shown.length) {
                 var more = document.createElement('li');
                 more.className = 'resultEmpty';
-                more.textContent = 'Showing latest ' + shown.length + ' of ' + keys.length;
+                more.textContent = t('list.showingLatest', { shown: shown.length, total: keys.length });
                 list.appendChild(more);
             }
         }
@@ -708,8 +1310,8 @@ function (BaseView, loading, toast) {
             var smartNote = view.querySelector('#smartSkipNote');
             if (smartNote) {
                 if (smartSkipped > 0 || statusMessage) {
-                    var note = statusMessage || ('Smart-skipped ' + smartSkipped + ' item(s) before this scan');
-                    smartNote.textContent = note;
+                    var note = statusMessage || (t('progress.smartSkipped', { n: smartSkipped }));
+                    smartNote.textContent = localizeDetail(note);
                     smartNote.classList.remove('hide');
                 } else {
                     smartNote.classList.add('hide');
@@ -748,7 +1350,7 @@ function (BaseView, loading, toast) {
 
             // Update status
             if (isRunning) {
-                this.setStatus(view, 'running', 'Running (' + processedItems + '/' + totalItems + ')');
+                this.setStatus(view, 'running', t('ui.runningCount', { done: processedItems, total: totalItems }));
             }
             
             return { 
@@ -775,7 +1377,7 @@ function (BaseView, loading, toast) {
             
             var elapsed = Date.now() - this.startTime.getTime();
             var elapsedEl = view.querySelector('#elapsedTime');
-            elapsedEl.textContent = 'Elapsed: ' + this.formatElapsed(elapsed);
+            elapsedEl.textContent = t('progress.elapsed', { time: this.formatElapsed(elapsed) });
         }
 
         fetchProgress(view, forceFullRender) {
@@ -799,12 +1401,12 @@ function (BaseView, loading, toast) {
             // Check for API keys first
             ApiClient.getPluginConfiguration(pluginId).then(function(config) {
                 if (!config.OmdbApiKey && !config.MdbListApiKey && !config.EnableImdbScraping) {
-                    toast({ text: 'Configure an OMDb/MDBList key or enable IMDb ratings fallback in Settings.' });
+                    toast({ text: t('toast.noKeys') });
                     return;
                 }
 
                 if (!config.UpdateMovies && !config.UpdateSeries && !config.UpdateEpisodes) {
-                    toast({ text: 'Please enable at least one item type in Settings.' });
+                    toast({ text: t('toast.noItemTypes') });
                     return;
                 }
 
@@ -820,7 +1422,7 @@ function (BaseView, loading, toast) {
                     smartNote.textContent = '';
                     smartNote.classList.add('hide');
                 }
-                self.setStatus(view, 'running', 'Starting...');
+                self.setStatus(view, 'running', t('ui.starting'));
                 
                 // Reset stats display
                 view.querySelector('#statProcessed').textContent = '0';
@@ -833,9 +1435,9 @@ function (BaseView, loading, toast) {
                 view.querySelector('#updatedBadge').textContent = '0';
                 view.querySelector('#skippedBadge').textContent = '0';
                 view.querySelector('#failureBadge').textContent = '0';
-                view.querySelector('#updatedList').innerHTML = '<li class="resultEmpty">No items updated yet</li>';
-                view.querySelector('#skippedList').innerHTML = '<li class="resultEmpty">No items skipped yet</li>';
-                view.querySelector('#failureList').innerHTML = '<li class="resultEmpty">No failures</li>';
+                view.querySelector('#updatedList').innerHTML = '<li class="resultEmpty">' + t('list.noUpdated') + '</li>';
+                view.querySelector('#skippedList').innerHTML = '<li class="resultEmpty">' + t('list.noSkipped') + '</li>';
+                view.querySelector('#failureList').innerHTML = '<li class="resultEmpty">' + t('list.noFailures') + '</li>';
 
                 // Get selection values
                 var libraryId = view.querySelector('#selectLibrary').value;
@@ -858,30 +1460,30 @@ function (BaseView, loading, toast) {
                         
                         if (task) {
                             if (task.State === 'Running') {
-                                self.setStatus(view, 'warning', 'Already running');
+                                self.setStatus(view, 'warning', t('ui.alreadyRunning'));
                                 self.stopRefresh(view);
-                                toast({ text: 'A rating sync is already running.' });
+                                toast({ text: t('toast.alreadyRunning') });
                                 return;
                             }
                             ApiClient.startScheduledTask(task.Id).then(function() {
                                 self.startTime = new Date();
                                 self.startPolling(view, task.Id);
                             }).catch(function(err) {
-                                self.setStatus(view, 'error', 'Failed to start');
+                                self.setStatus(view, 'error', t('ui.failedToStart'));
                                 self.stopRefresh(view);
-                                toast({ text: 'Failed to start task: ' + err });
+                                toast({ text: t('toast.failedStart', { err: err }) });
                             });
                         } else {
-                            self.setStatus(view, 'error', 'Task not found');
+                            self.setStatus(view, 'error', t('ui.taskNotFound'));
                             self.stopRefresh(view);
-                            toast({ text: 'Task not found - restart Emby Server' });
+                            toast({ text: t('toast.taskNotFound') });
                         }
                     });
                 }
                 
                 // If any selection is made, queue selected items first
                 if (libraryId || seriesId || seasonId || episodeId || movieId) {
-                    self.setStatus(view, 'running', 'Queuing selected items...');
+                    self.setStatus(view, 'running', t('ui.queuingSelected'));
                     
                     ApiClient.ajax({
                         type: 'POST',
@@ -899,9 +1501,9 @@ function (BaseView, loading, toast) {
                         startTask();
                     }).catch(function(err) {
                         console.error('Error queuing selected items:', err);
-                        self.setStatus(view, 'error', 'Queue failed');
+                        self.setStatus(view, 'error', t('ui.queueFailed'));
                         self.stopRefresh(view);
-                        toast({ text: 'Failed to queue selected items. Full library scan was not started.' });
+                        toast({ text: t('toast.failedQueueSelected') });
                     });
                 } else {
                     // No selection - run full scan
@@ -969,15 +1571,15 @@ function (BaseView, loading, toast) {
             var statusClass = errors > 0 ? 'error' : 'completed';
             if (cancelled) {
                 statusClass = 'warning';
-                statusText = 'Cancelled — ' + updated + ' updated';
+                statusText = t('ui.cancelledWith', { n: updated });
             } else if (statusMessage && (!stats || stats.totalItems === 0)) {
                 statusClass = 'warning';
-                statusText = statusMessage;
+                statusText = localizeDetail(statusMessage);
             } else {
-                statusText = 'Completed! ' + updated + ' updated';
+                statusText = t('ui.completedWith', { n: updated });
             }
-            if (!cancelled && skipped > 0) statusText += ', ' + skipped + ' skipped';
-            if (errors > 0) statusText += ', ' + errors + ' errors';
+            if (!cancelled && skipped > 0) statusText += t('ui.skippedSuffix', { n: skipped });
+            if (errors > 0) statusText += t('ui.errorsSuffix', { n: errors });
             
             self.setStatus(view, statusClass, statusText);
             self.stopRefresh(view);
@@ -993,13 +1595,13 @@ function (BaseView, loading, toast) {
         cancelRefresh(view) {
             var self = this;
             
-            self.setStatus(view, 'warning', 'Cancelling...');
+            self.setStatus(view, 'warning', t('ui.cancelling'));
             
             ApiClient.getScheduledTasks().then(function(tasks) {
                 var task = tasks.find(function(t) { return t.Key === 'RatingSync'; });
                 if (task && task.State === 'Running') {
                     ApiClient.stopScheduledTask(task.Id).then(function() {
-                        self.setStatus(view, 'idle', 'Cancelled');
+                        self.setStatus(view, 'idle', t('ui.cancelled'));
                         self.stopRefresh(view);
                     });
                 } else {
@@ -1040,20 +1642,20 @@ function (BaseView, loading, toast) {
                 view.querySelector('#updatedBadge').textContent = '0';
                 view.querySelector('#skippedBadge').textContent = '0';
                 view.querySelector('#failureBadge').textContent = '0';
-                view.querySelector('#updatedList').innerHTML = '<li class="resultEmpty">No items updated yet</li>';
-                view.querySelector('#skippedList').innerHTML = '<li class="resultEmpty">No items skipped yet</li>';
-                view.querySelector('#failureList').innerHTML = '<li class="resultEmpty">No failures</li>';
+                view.querySelector('#updatedList').innerHTML = '<li class="resultEmpty">' + t('list.noUpdated') + '</li>';
+                view.querySelector('#skippedList').innerHTML = '<li class="resultEmpty">' + t('list.noSkipped') + '</li>';
+                view.querySelector('#failureList').innerHTML = '<li class="resultEmpty">' + t('list.noFailures') + '</li>';
                 self.startTime = null;
-                self.setStatus(view, 'idle', 'Ready');
+                self.setStatus(view, 'idle', t('ui.ready'));
             }).catch(function() {
                 // Just clear locally if API fails
                 view.querySelector('#statProcessed').textContent = '0';
                 view.querySelector('#statUpdated').textContent = '0';
                 view.querySelector('#statSkipped').textContent = '0';
                 view.querySelector('#statErrors').textContent = '0';
-                view.querySelector('#updatedList').innerHTML = '<li class="resultEmpty">No items updated yet</li>';
-                view.querySelector('#skippedList').innerHTML = '<li class="resultEmpty">No items skipped yet</li>';
-                view.querySelector('#failureList').innerHTML = '<li class="resultEmpty">No failures</li>';
+                view.querySelector('#updatedList').innerHTML = '<li class="resultEmpty">' + t('list.noUpdated') + '</li>';
+                view.querySelector('#skippedList').innerHTML = '<li class="resultEmpty">' + t('list.noSkipped') + '</li>';
+                view.querySelector('#failureList').innerHTML = '<li class="resultEmpty">' + t('list.noFailures') + '</li>';
             });
         }
 
@@ -1071,21 +1673,21 @@ function (BaseView, loading, toast) {
                         view.querySelector('#btnRunRefresh').classList.add('hide');
                         view.querySelector('#btnCancelRefresh').classList.remove('hide');
                         view.querySelector('#progressSection').classList.remove('hide');
-                        self.setStatus(view, 'running', 'Running...');
+                        self.setStatus(view, 'running', t('ui.running'));
                         self.startPolling(view, task.Id);
                     } else {
                         // Task not running
                         if (stats && stats.statusMessage && stats.totalItems === 0) {
-                            self.setStatus(view, 'warning', stats.statusMessage);
+                            self.setStatus(view, 'warning', localizeDetail(stats.statusMessage));
                         } else if (stats && stats.totalItems > 0) {
-                            var statusText = stats.updatedItems + ' updated, ' + stats.skippedItems + ' skipped';
+                            var statusText = t('ui.runSummary', { u: stats.updatedItems, s: stats.skippedItems });
                             if (stats.errorItems > 0) {
-                                statusText += ', ' + stats.errorItems + ' errors';
+                                statusText += t('ui.errorsSuffix', { n: stats.errorItems });
                             }
                             if (stats.wasCancelled) {
-                                self.setStatus(view, 'warning', 'Last run cancelled: ' + statusText);
+                                self.setStatus(view, 'warning', t('ui.lastRunCancelled', { status: statusText }));
                             } else {
-                                self.setStatus(view, stats.errorItems > 0 ? 'error' : 'completed', 'Last run: ' + statusText);
+                                self.setStatus(view, stats.errorItems > 0 ? 'error' : 'completed', t('ui.lastRun', { status: statusText }));
                             }
                         }
                     }
@@ -1097,6 +1699,8 @@ function (BaseView, loading, toast) {
             super.onResume(options);
             var self = this;
             var view = this.view;
+
+            translateDom(view);
 
             if (!self._uiBound) {
                 self._uiBound = true;
@@ -1258,7 +1862,7 @@ function (BaseView, loading, toast) {
         loadScanHistory(view) {
             var self = this;
             var container = view.querySelector('#sessionList');
-            container.innerHTML = '<p class="loadingText">Loading scan history...</p>';
+            container.innerHTML = '<p class="loadingText">' + t('history.loading') + '</p>';
             
             ApiClient.ajax({
                 type: 'GET',
@@ -1268,7 +1872,7 @@ function (BaseView, loading, toast) {
                 self.scanHistorySessions = sessions || [];
 
                 if (!sessions || sessions.length === 0) {
-                    container.innerHTML = '<p class="emptyText">No scan history yet. Run a scan to see history here.</p>';
+                    container.innerHTML = '<p class="emptyText">' + t('history.empty') + '</p>';
                     return;
                 }
                 
@@ -1276,7 +1880,7 @@ function (BaseView, loading, toast) {
                 sessions.forEach(function(session, idx) {
                     var startDate = new Date(session.StartTime);
                     var endDate = session.EndTime ? new Date(session.EndTime) : null;
-                    var duration = endDate ? self.formatElapsed(endDate - startDate) : 'In progress...';
+                    var duration = endDate ? self.formatElapsed(endDate - startDate) : t('ui.inProgressDots');
                     
                     var cardClass = 'sessionCard';
                     if (session.WasCancelled) cardClass += ' cancelled';
@@ -1288,20 +1892,20 @@ function (BaseView, loading, toast) {
                     html += '<div class="sessionDate">' + self.formatDateTime(startDate) + '</div>';
                     html += '</div>';
                     html += '<div class="sessionHeaderRight">';
-                    html += '<span class="sessionDuration">' + duration + (session.WasCancelled ? ' (Cancelled)' : '') + '</span>';
+                    html += '<span class="sessionDuration">' + duration + (session.WasCancelled ? t('history.cancelledSuffix') : '') + '</span>';
                     if (session.SessionId) {
-                        html += '<button type="button" class="sessionDeleteBtn" data-action="delete-scan" data-session-id="' + self.escapeHtml(session.SessionId) + '">Delete</button>';
+                        html += '<button type="button" class="sessionDeleteBtn" data-action="delete-scan" data-session-id="' + self.escapeHtml(session.SessionId) + '">' + t('history.delete') + '</button>';
                     }
                     html += '</div>';
                     html += '</div>';
                     html += '<div class="sessionStats">';
-                    html += '<span class="sessionStat"><span class="label">Total: </span><span class="value">' + session.TotalItems + '</span></span>';
-                    html += '<span class="sessionStat updated"><span class="label">Updated: </span><span class="value">' + session.UpdatedItems + '</span></span>';
-                    html += '<span class="sessionStat skipped"><span class="label">Skipped: </span><span class="value">' + session.SkippedItems + '</span></span>';
-                    html += '<span class="sessionStat errors"><span class="label">Errors: </span><span class="value">' + session.ErrorItems + '</span></span>';
+                    html += '<span class="sessionStat"><span class="label">' + t('history.total') + '</span><span class="value">' + session.TotalItems + '</span></span>';
+                    html += '<span class="sessionStat updated"><span class="label">' + t('history.updated') + '</span><span class="value">' + session.UpdatedItems + '</span></span>';
+                    html += '<span class="sessionStat skipped"><span class="label">' + t('history.skipped') + '</span><span class="value">' + session.SkippedItems + '</span></span>';
+                    html += '<span class="sessionStat errors"><span class="label">' + t('history.errors') + '</span><span class="value">' + session.ErrorItems + '</span></span>';
                     html += '</div>';
 
-                    html += '<div class="sessionCta"><span>View report</span></div>';
+                    html += '<div class="sessionCta"><span>' + t('history.viewReport') + '</span></div>';
                     html += '</div>';
                 });
                 
@@ -1337,7 +1941,7 @@ function (BaseView, loading, toast) {
                 };
             }).catch(function(err) {
                 console.error('Error loading scan history:', err);
-                container.innerHTML = '<p class="emptyText">Error loading scan history.</p>';
+                container.innerHTML = '<p class="emptyText">' + t('history.error') + '</p>';
             });
         }
 
@@ -1358,12 +1962,12 @@ function (BaseView, loading, toast) {
             var title = view.querySelector('#scanReportTitle');
             if (title) {
                 var startDate = session && session.StartTime ? new Date(session.StartTime) : null;
-                title.textContent = startDate ? ('Scan Report — ' + this.formatDateTime(startDate)) : 'Scan Report';
+                title.textContent = startDate ? t('report.titleWithDate', { date: this.formatDateTime(startDate) }) : t('report.title');
             }
 
             var body = view.querySelector('#scanReportBody');
             if (body) {
-                body.innerHTML = '<p class="loadingText">Loading scan report...</p>';
+                body.innerHTML = '<p class="loadingText">' + t('report.loading') + '</p>';
             }
 
             // Load full report if available; otherwise fallback to session summary
@@ -1467,20 +2071,20 @@ function (BaseView, loading, toast) {
             var isLegacy = !report;
             var src = report || sessionFallback;
             if (!src) {
-                return '<p class="emptyText">No report data found.</p>';
+                return '<p class="emptyText">' + t('report.noData') + '</p>';
             }
 
             var startDate = src.StartTime ? new Date(src.StartTime) : null;
             var endDate = src.EndTime ? new Date(src.EndTime) : null;
             var duration = (startDate && endDate)
                 ? self.formatElapsed(endDate - startDate)
-                : (src.WasCancelled ? 'Cancelled' : (endDate ? '' : 'In progress'));
+                : (src.WasCancelled ? t('ui.cancelled') : (endDate ? '' : t('ui.inProgress')));
 
             var statusText;
-            if (!endDate && !src.WasCancelled) statusText = 'In progress';
-            else if (src.WasCancelled) statusText = 'Cancelled';
-            else if ((src.ErrorItems || 0) > 0) statusText = 'Completed with errors';
-            else statusText = 'Completed';
+            if (!endDate && !src.WasCancelled) statusText = t('ui.inProgress');
+            else if (src.WasCancelled) statusText = t('ui.cancelled');
+            else if ((src.ErrorItems || 0) > 0) statusText = t('report.statusCompletedWithErrors');
+            else statusText = t('report.statusCompleted');
 
             var processed = (typeof src.ProcessedItems === 'number' && src.ProcessedItems >= 0)
                 ? src.ProcessedItems
@@ -1512,31 +2116,31 @@ function (BaseView, loading, toast) {
 
             var html = '';
             if (isLegacy) {
-                html += '<div class="noteBox"><strong>Legacy scan:</strong> this scan ran before detailed reports were enabled, so only limited info may be available.</div>';
+                html += '<div class="noteBox">' + t('report.legacy') + '</div>';
             }
 
             html += '<div class="reportMeta">';
-            html += self.reportMetaBox('Started', startDate ? self.formatDateTime(startDate) : '');
-            html += self.reportMetaBox('Finished', endDate ? self.formatDateTime(endDate) : (src.WasCancelled ? 'Cancelled' : 'In progress'));
-            html += self.reportMetaBox('Duration', duration || (endDate ? '' : 'In progress'));
-            html += self.reportMetaBox('Processed', processed + ' / ' + src.TotalItems);
-            html += self.reportMetaBox('Updated', String(src.UpdatedItems || 0));
-            html += self.reportMetaBox('Skipped', String(src.SkippedItems || 0));
-            html += self.reportMetaBox('Errors', String(src.ErrorItems || 0));
-            html += self.reportMetaBox('OMDb calls', String(src.OmdbRequests || 0));
-            html += self.reportMetaBox('MDBList calls', String(src.MdbListRequests || 0));
-            html += self.reportMetaBox('IMDb fallback', String(src.ImdbScrapeRequests || 0));
-            html += self.reportMetaBox('Status', statusText);
+            html += self.reportMetaBox('started', startDate ? self.formatDateTime(startDate) : '');
+            html += self.reportMetaBox('finished', endDate ? self.formatDateTime(endDate) : (src.WasCancelled ? t('ui.cancelled') : t('ui.inProgress')));
+            html += self.reportMetaBox('duration', duration || (endDate ? '' : t('ui.inProgress')));
+            html += self.reportMetaBox('processed', processed + ' / ' + src.TotalItems);
+            html += self.reportMetaBox('updated', String(src.UpdatedItems || 0));
+            html += self.reportMetaBox('skipped', String(src.SkippedItems || 0));
+            html += self.reportMetaBox('errors', String(src.ErrorItems || 0));
+            html += self.reportMetaBox('omdbCalls', String(src.OmdbRequests || 0));
+            html += self.reportMetaBox('mdbCalls', String(src.MdbListRequests || 0));
+            html += self.reportMetaBox('imdbFallback', String(src.ImdbScrapeRequests || 0));
+            html += self.reportMetaBox('status', statusText);
             html += '</div>';
 
             html += '<div class="reportFilterRow">';
-            html += '<input id="scanReportFilter" type="text" placeholder="Search (name or details)…" value="' + self.escapeHtml(state.filterText || '') + '" />';
+            html += '<input id="scanReportFilter" type="text" placeholder="' + self.escapeHtml(t('report.searchPlaceholder')) + '" value="' + self.escapeHtml(state.filterText || '') + '" />';
             html += '<select id="scanReportPageSize" style="padding:0.55em 0.7em;border-radius:6px;border:1px solid rgba(255,255,255,0.08);background:rgba(0,0,0,0.35);color:rgba(255,255,255,0.9)">'
-                + '<option value="50"' + (pageSize === 50 ? ' selected' : '') + '>50 / page</option>'
-                + '<option value="100"' + (pageSize === 100 ? ' selected' : '') + '>100 / page</option>'
-                + '<option value="250"' + (pageSize === 250 ? ' selected' : '') + '>250 / page</option>'
+                + '<option value="50"' + (pageSize === 50 ? ' selected' : '') + '>' + t('report.perPage', { n: 50 }) + '</option>'
+                + '<option value="100"' + (pageSize === 100 ? ' selected' : '') + '>' + t('report.perPage', { n: 100 }) + '</option>'
+                + '<option value="250"' + (pageSize === 250 ? ' selected' : '') + '>' + t('report.perPage', { n: 250 }) + '</option>'
                 + '</select>';
-            html += '<button type="button" class="reportSmallBtn" data-action="download-json"' + (report ? '' : ' disabled') + '>Download JSON</button>';
+            html += '<button type="button" class="reportSmallBtn" data-action="download-json"' + (report ? '' : ' disabled') + '>' + t('report.downloadJson') + '</button>';
             html += '</div>';
 
             html += self.renderReportTabs(state.activeTab, updatedEntries.length, skippedEntries.length, errorEntries.length);
@@ -1544,19 +2148,18 @@ function (BaseView, loading, toast) {
             if (state.activeTab === 'overview') {
                 html += self.renderOverviewSummary(summary);
             } else if (state.activeTab === 'updated') {
-                html += self.renderPagedList('Updated Items', updatedEntries, 'updated', pageSize, state.page.updated || 1, 'prev-updated', 'next-updated');
+                html += self.renderPagedList(t('report.updatedItems'), updatedEntries, 'updated', pageSize, state.page.updated || 1, 'prev-updated', 'next-updated');
             } else if (state.activeTab === 'skipped') {
-                html += self.renderPagedList('Skipped Items', skippedEntries, 'skipped', pageSize, state.page.skipped || 1, 'prev-skipped', 'next-skipped');
+                html += self.renderPagedList(t('report.skippedItems'), skippedEntries, 'skipped', pageSize, state.page.skipped || 1, 'prev-skipped', 'next-skipped');
             } else if (state.activeTab === 'errors') {
-                html += self.renderPagedList('Errors', errorEntries, 'failure', pageSize, state.page.errors || 1, 'prev-errors', 'next-errors');
+                html += self.renderPagedList(t('report.errors'), errorEntries, 'failure', pageSize, state.page.errors || 1, 'prev-errors', 'next-errors');
             }
 
             return html;
         }
 
-        reportMetaBox(label, value) {
+        reportMetaBox(key, value) {
             var tone = 'tone-neutral';
-            var key = (label || '').toLowerCase();
             if (key === 'updated') tone = 'tone-updated';
             else if (key === 'skipped') tone = 'tone-skipped';
             else if (key === 'errors') tone = 'tone-errors';
@@ -1565,7 +2168,7 @@ function (BaseView, loading, toast) {
             else if (key === 'started' || key === 'finished' || key === 'duration') tone = 'tone-time';
 
             return '<div class="reportMetaBox ' + tone + '">'
-                + '<div class="reportMetaLabel">' + this.escapeHtml(label) + '</div>'
+                + '<div class="reportMetaLabel">' + this.escapeHtml(t('report.' + key)) + '</div>'
                 + '<div class="reportMetaValue">' + this.escapeHtml(value || '') + '</div>'
                 + '</div>';
         }
@@ -1578,10 +2181,10 @@ function (BaseView, loading, toast) {
             };
 
             var html = '<div class="reportFilterRow" style="margin-top:-0.25em">';
-            html += tab('overview', 'Overview', '');
-            html += tab('updated', 'Updated', updatedCount);
-            html += tab('skipped', 'Skipped', skippedCount);
-            html += tab('errors', 'Errors', errorCount);
+            html += tab('overview', t('report.overview'), '');
+            html += tab('updated', t('report.updated'), updatedCount);
+            html += tab('skipped', t('report.skipped'), skippedCount);
+            html += tab('errors', t('report.errors'), errorCount);
             html += '</div>';
             return html;
         }
@@ -1591,22 +2194,22 @@ function (BaseView, loading, toast) {
             var html = '';
 
             html += '<div class="reportSection">';
-            html += '<h4 class="reportH tone-updated">Updated — by type</h4>';
+            html += '<h4 class="reportH tone-updated">' + t('report.byType') + '</h4>';
             html += self.renderCountChips(summary.updatedByType, 'updated');
             html += '</div>';
 
             html += '<div class="reportSection">';
-            html += '<h4 class="reportH tone-updated">Updated — by source</h4>';
+            html += '<h4 class="reportH tone-updated">' + t('report.bySource') + '</h4>';
             html += self.renderCountChips(summary.updatedBySource, 'updated');
             html += '</div>';
 
             html += '<div class="reportSection">';
-            html += '<h4 class="reportH tone-skipped">Skipped — top reasons</h4>';
+            html += '<h4 class="reportH tone-skipped">' + t('report.topSkip') + '</h4>';
             html += self.renderCountChips(summary.skippedByReason, 'skipped');
             html += '</div>';
 
             html += '<div class="reportSection">';
-            html += '<h4 class="reportH tone-errors">Errors — top messages</h4>';
+            html += '<h4 class="reportH tone-errors">' + t('report.topErrors') + '</h4>';
             html += self.renderCountChips(summary.errorsByMessage, 'errors');
             html += '</div>';
 
@@ -1616,7 +2219,7 @@ function (BaseView, loading, toast) {
         renderCountChips(countsObj, tone) {
             var entries = Object.keys(countsObj || {}).map(function(k) { return { key: k, count: countsObj[k] }; });
             entries.sort(function(a, b) { return b.count - a.count; });
-            if (entries.length === 0) return '<p class="reportNote">No data.</p>';
+            if (entries.length === 0) return '<p class="reportNote">' + t('report.noDataChip') + '</p>';
 
             var html = '<div style="display:flex;flex-wrap:wrap;gap:0.5em">';
             entries.slice(0, 20).forEach(function(e) {
@@ -1643,7 +2246,7 @@ function (BaseView, loading, toast) {
         buildReportSummary(updatedEntries, skippedEntries, errorEntries) {
             var self = this;
             var inc = function(obj, key) {
-                if (!key) key = 'Unknown';
+                if (!key) key = t('report.unknown');
                 obj[key] = (obj[key] || 0) + 1;
             };
 
@@ -1653,11 +2256,11 @@ function (BaseView, loading, toast) {
                 var d = e && e.detail ? e.detail : '';
                 var hasImdb = d.indexOf('IMDb community') >= 0 || d.indexOf('IMDb:') >= 0;
                 var hasRt = d.indexOf('RT critic') >= 0 || d.indexOf('RT:') >= 0;
-                var type = hasImdb && hasRt ? 'IMDb + RT' : (hasImdb ? 'IMDb only' : (hasRt ? 'RT only' : 'Other'));
+                var type = hasImdb && hasRt ? t('report.typeBoth') : (hasImdb ? t('report.typeImdb') : (hasRt ? t('report.typeRt') : t('report.typeOther')));
                 inc(updatedByType, type);
 
                 var src = self.extractSourceLabel(d);
-                inc(updatedBySource, src || 'Unknown');
+                inc(updatedBySource, src || t('report.unknown'));
             });
 
             var skippedByReason = {};
@@ -1665,13 +2268,13 @@ function (BaseView, loading, toast) {
                 var d = e && e.detail ? String(e.detail) : '';
                 var primary = d.split(',')[0].trim();
                 primary = self.normalizeSkippedReason(primary);
-                inc(skippedByReason, primary || 'Unknown');
+                inc(skippedByReason, primary || t('report.unknown'));
             });
 
             var errorsByMessage = {};
             (errorEntries || []).forEach(function(e) {
                 var d = e && e.detail ? String(e.detail) : '';
-                inc(errorsByMessage, d || 'Unknown');
+                inc(errorsByMessage, d || t('report.unknown'));
             });
 
             return {
@@ -1702,15 +2305,15 @@ function (BaseView, loading, toast) {
             html += '<h4>' + this.escapeHtml(title) + '</h4>';
 
             html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:0.75em;flex-wrap:wrap;margin:0.25em 0 0.75em 0">';
-            html += '<div class="reportNote" style="margin:0">Showing ' + (total === 0 ? 0 : (start + 1)) + '-' + Math.min(total, start + pageSize) + ' of ' + total + '</div>';
+            html += '<div class="reportNote" style="margin:0">' + t('report.showing', { from: (total === 0 ? 0 : (start + 1)), to: Math.min(total, start + pageSize), total: total }) + '</div>';
             html += '<div style="display:flex;gap:0.5em">'
-                + '<button type="button" class="reportSmallBtn" data-action="' + prevAction + '"' + (page <= 1 ? ' disabled' : '') + '>Prev</button>'
-                + '<button type="button" class="reportSmallBtn" data-action="' + nextAction + '"' + (page >= pages ? ' disabled' : '') + '>Next</button>'
+                + '<button type="button" class="reportSmallBtn" data-action="' + prevAction + '"' + (page <= 1 ? ' disabled' : '') + '>' + t('report.prev') + '</button>'
+                + '<button type="button" class="reportSmallBtn" data-action="' + nextAction + '"' + (page >= pages ? ' disabled' : '') + '>' + t('report.next') + '</button>'
                 + '</div>';
             html += '</div>';
 
             if (slice.length === 0) {
-                html += '<p class="reportNote">No items.</p>';
+                html += '<p class="reportNote">' + t('report.noItems') + '</p>';
                 html += '</div>';
                 return html;
             }
@@ -1721,7 +2324,7 @@ function (BaseView, loading, toast) {
                 var detail = item && item.detail ? item.detail : '';
                 html += '<li class="reportListItem ' + typeClass + '">' +
                     '<div class="reportItemName">' + this.escapeHtml(name) + '</div>' +
-                    '<div class="reportItemDetail">' + this.escapeHtml(detail) + '</div>' +
+                    '<div class="reportItemDetail">' + this.escapeHtml(localizeDetail(detail)) + '</div>' +
                     '</li>';
             }.bind(this));
             html += '</ul>';
@@ -1732,7 +2335,7 @@ function (BaseView, loading, toast) {
         downloadScanReportJson() {
             var report = this.activeScanReport;
             if (!report) {
-                toast('Report not available for this scan');
+                toast(t('toast.reportUnavailable'));
                 return;
             }
             try {
@@ -1747,7 +2350,7 @@ function (BaseView, loading, toast) {
                 a.remove();
                 setTimeout(function() { URL.revokeObjectURL(url); }, 250);
             } catch (e) {
-                toast('Failed to download report');
+                toast(t('toast.downloadFailed'));
             }
         }
 
@@ -1771,18 +2374,18 @@ function (BaseView, loading, toast) {
         copyScanReportToClipboard(view) {
             var text = this.buildScanReportText(this.activeScanReport, this.activeScanReportSession);
             if (!text) {
-                toast('No report to copy');
+                toast(t('toast.noReportToCopy'));
                 return;
             }
             if (!navigator.clipboard || !navigator.clipboard.writeText) {
-                toast('Clipboard not available in this environment');
+                toast(t('toast.clipboardUnavailable'));
                 return;
             }
 
             navigator.clipboard.writeText(text).then(function() {
-                toast('Report copied');
+                toast(t('toast.reportCopied'));
             }).catch(function() {
-                toast('Failed to copy report');
+                toast(t('toast.copyFailed'));
             });
         }
 
@@ -1793,14 +2396,14 @@ function (BaseView, loading, toast) {
             var startDate = src.StartTime ? new Date(src.StartTime) : null;
             var endDate = src.EndTime ? new Date(src.EndTime) : null;
             var lines = [];
-            lines.push('Rating Sync - Scan Report');
-            if (startDate) lines.push('Started: ' + this.formatDateTime(startDate));
-            if (endDate) lines.push('Finished: ' + this.formatDateTime(endDate));
-            lines.push('Total: ' + (src.TotalItems || 0));
-            lines.push('Processed: ' + ((typeof src.ProcessedItems === 'number') ? src.ProcessedItems : (src.TotalItems || 0)));
-            lines.push('Updated: ' + (src.UpdatedItems || 0));
-            lines.push('Skipped: ' + (src.SkippedItems || 0));
-            lines.push('Errors: ' + (src.ErrorItems || 0));
+            lines.push(t('copy.title'));
+            if (startDate) lines.push(t('copy.started') + this.formatDateTime(startDate));
+            if (endDate) lines.push(t('copy.finished') + this.formatDateTime(endDate));
+            lines.push(t('copy.total') + (src.TotalItems || 0));
+            lines.push(t('copy.processed') + ((typeof src.ProcessedItems === 'number') ? src.ProcessedItems : (src.TotalItems || 0)));
+            lines.push(t('report.updated') + ': ' + (src.UpdatedItems || 0));
+            lines.push(t('report.skipped') + ': ' + (src.SkippedItems || 0));
+            lines.push(t('report.errors') + ': ' + (src.ErrorItems || 0));
             lines.push('');
 
             var addList = function(title, list) {
@@ -1809,20 +2412,20 @@ function (BaseView, loading, toast) {
                     var name = e && (e.Name || e.name) ? (e.Name || e.name) : '';
                     var detail = e && (e.Detail || e.detail) ? (e.Detail || e.detail) : '';
                     var line = '- ' + name;
-                    if (detail) line += ' — ' + detail;
+                    if (detail) line += ' — ' + localizeDetail(detail);
                     lines.push(line);
                 });
                 lines.push('');
             };
 
             if (report) {
-                addList('Updated', report.Updated);
-                addList('Skipped', report.Skipped);
-                addList('Errors', report.Errors);
+                addList(t('report.updated'), report.Updated);
+                addList(t('report.skipped'), report.Skipped);
+                addList(t('report.errors'), report.Errors);
             } else {
-                addList('Updated', this.objectToPairs(src.UpdatedDetails));
-                addList('Skipped', this.objectToPairs(src.SkippedDetails));
-                addList('Errors', this.objectToPairs(src.FailureDetails));
+                addList(t('report.updated'), this.objectToPairs(src.UpdatedDetails));
+                addList(t('report.skipped'), this.objectToPairs(src.SkippedDetails));
+                addList(t('report.errors'), this.objectToPairs(src.FailureDetails));
             }
 
             return lines.join('\n');
@@ -1838,7 +2441,7 @@ function (BaseView, loading, toast) {
             var scanBtn = view.querySelector('#btnScanMissingSelected');
             if (scanBtn) scanBtn.disabled = true;
             
-            container.innerHTML = '<p class="loadingText">Searching for items with missing data...</p>';
+            container.innerHTML = '<p class="loadingText">' + t('missing.searching') + '</p>';
             
             ApiClient.ajax({
                 type: 'GET',
@@ -1847,14 +2450,14 @@ function (BaseView, loading, toast) {
             }).then(function(items) {
                 self.missingDataCache = items || [];
                 if (!items || items.length === 0) {
-                    container.innerHTML = '<p class="emptyText">No items found with missing data. Great job!</p>';
+                    container.innerHTML = '<p class="emptyText">' + t('missing.none') + '</p>';
                     return;
                 }
 
                 self.renderMissingData(view, items);
             }).catch(function(err) {
                 console.error('Error loading missing data:', err);
-                container.innerHTML = '<p class="emptyText">Error searching for missing data.</p>';
+                container.innerHTML = '<p class="emptyText">' + t('missing.error') + '</p>';
             });
         }
 
@@ -1875,22 +2478,22 @@ function (BaseView, loading, toast) {
             });
 
             if (!filtered || filtered.length === 0) {
-                container.innerHTML = '<p class="emptyText">No items match the selected filters.</p>';
+                container.innerHTML = '<p class="emptyText">' + t('missing.noMatch') + '</p>';
                 return;
             }
 
             var html = '<table class="dataTable" id="missingDataTable">';
             html += '<thead><tr>';
-            html += '<th>Name</th>';
+            html += '<th>' + t('missing.colName') + '</th>';
             if (showEpisodeContext) {
-                html += '<th>Series</th>';
-                html += '<th>Season</th>';
+                html += '<th>' + t('missing.colSeries') + '</th>';
+                html += '<th>' + t('missing.colSeason') + '</th>';
             }
-            html += '<th>Type</th>';
-            html += '<th>IMDb ID</th>';
-            html += '<th>Community Rating</th>';
-            html += '<th>Critic Rating</th>';
-            html += '<th>Issue</th>';
+            html += '<th>' + t('missing.colType') + '</th>';
+            html += '<th>' + t('missing.colImdb') + '</th>';
+            html += '<th>' + t('missing.colCommunity') + '</th>';
+            html += '<th>' + t('missing.colCritic') + '</th>';
+            html += '<th>' + t('missing.colIssue') + '</th>';
             html += '</tr></thead>';
             html += '<tbody>';
 
@@ -1920,16 +2523,16 @@ function (BaseView, loading, toast) {
                     html += '<td>' + self.escapeHtml(seasonText) + '</td>';
                 }
 
-                html += '<td><span class="type-badge ' + typeClass + '">' + item.Type + '</span></td>';
+                html += '<td><span class="type-badge ' + typeClass + '">' + self.escapeHtml(typeLabel(item.Type)) + '</span></td>';
                 html += '<td class="' + (item.HasImdbId ? 'present' : 'missing') + '">' + (item.ImdbId || '—') + '</td>';
                 html += '<td class="' + (item.HasCommunityRating ? 'present' : 'missing') + '">' + (item.CommunityRating ? item.CommunityRating.toFixed(1) : '—') + '</td>';
                 html += '<td class="' + (item.HasCriticRating ? 'present' : 'missing') + '">' + (item.CriticRating ? item.CriticRating.toFixed(0) + '%' : '—') + '</td>';
-                html += '<td>' + self.escapeHtml(item.MissingReason) + '</td>';
+                html += '<td>' + self.escapeHtml(localizeDetail(item.MissingReason)) + '</td>';
                 html += '</tr>';
             });
 
             html += '</tbody></table>';
-            html += '<p style="padding: 0.75em 1em; font-size: 0.85em; color: rgba(255,255,255,0.5);">Showing ' + filtered.length + ' items (max 500)</p>';
+            html += '<p style="padding: 0.75em 1em; font-size: 0.85em; color: rgba(255,255,255,0.5);">' + t('missing.showing', { n: filtered.length }) + '</p>';
 
             container.innerHTML = html;
 
@@ -1960,7 +2563,7 @@ function (BaseView, loading, toast) {
             var selected = self.selectedMissingItem;
 
             if (!selected) {
-                toast({ text: 'Select an item first.' });
+                toast({ text: t('toast.selectItemFirst') });
                 return;
             }
 
@@ -1982,7 +2585,7 @@ function (BaseView, loading, toast) {
             view.querySelector('#progressSection').classList.remove('hide');
             view.querySelector('#elapsedTime').textContent = '';
             view.querySelector('#etaBox').classList.add('hide');
-            self.setStatus(view, 'running', 'Queuing selected item...');
+            self.setStatus(view, 'running', t('ui.queuingSelectedOne'));
             view.querySelector('#statProcessed').textContent = '0';
             view.querySelector('#statUpdated').textContent = '0';
             view.querySelector('#statSkipped').textContent = '0';
@@ -1993,9 +2596,9 @@ function (BaseView, loading, toast) {
             view.querySelector('#updatedBadge').textContent = '0';
             view.querySelector('#skippedBadge').textContent = '0';
             view.querySelector('#failureBadge').textContent = '0';
-            view.querySelector('#updatedList').innerHTML = '<li class="resultEmpty">No items updated yet</li>';
-            view.querySelector('#skippedList').innerHTML = '<li class="resultEmpty">No items skipped yet</li>';
-            view.querySelector('#failureList').innerHTML = '<li class="resultEmpty">No failures</li>';
+            view.querySelector('#updatedList').innerHTML = '<li class="resultEmpty">' + t('list.noUpdated') + '</li>';
+            view.querySelector('#skippedList').innerHTML = '<li class="resultEmpty">' + t('list.noSkipped') + '</li>';
+            view.querySelector('#failureList').innerHTML = '<li class="resultEmpty">' + t('list.noFailures') + '</li>';
 
             var payload = {
                 LibraryId: '',
@@ -2012,8 +2615,8 @@ function (BaseView, loading, toast) {
             } else if (selected.Type === 'Episode') {
                 payload.EpisodeId = selected.Id;
             } else {
-                toast({ text: 'Unsupported item type: ' + selected.Type });
-                self.setStatus(view, 'error', 'Unsupported item type');
+                toast({ text: t('toast.unsupportedType', { type: typeLabel(selected.Type) }) });
+                self.setStatus(view, 'error', t('ui.unsupportedType'));
                 self.stopRefresh(view);
                 return;
             }
@@ -2026,14 +2629,14 @@ function (BaseView, loading, toast) {
                             self.startTime = new Date();
                             self.startPolling(view, task.Id);
                         }).catch(function(err) {
-                            self.setStatus(view, 'error', 'Failed to start');
+                            self.setStatus(view, 'error', t('ui.failedToStart'));
                             self.stopRefresh(view);
-                            toast({ text: 'Failed to start task: ' + err });
+                            toast({ text: t('toast.failedStart', { err: err }) });
                         });
                     } else {
-                        self.setStatus(view, 'error', 'Task not found');
+                        self.setStatus(view, 'error', t('ui.taskNotFound'));
                         self.stopRefresh(view);
-                        toast({ text: 'Task not found - restart Emby Server' });
+                        toast({ text: t('toast.taskNotFound') });
                     }
                 });
             }
@@ -2047,9 +2650,9 @@ function (BaseView, loading, toast) {
                 startTask();
             }).catch(function(err) {
                 console.error('Error queuing selected item:', err);
-                self.setStatus(view, 'error', 'Failed to queue');
+                self.setStatus(view, 'error', t('ui.queueFailedOne'));
                 self.stopRefresh(view);
-                toast({ text: 'Failed to queue selected item: ' + err });
+                toast({ text: t('toast.failedQueueOne', { err: err }) });
             });
         }
 
@@ -2058,7 +2661,7 @@ function (BaseView, loading, toast) {
             var container = view.querySelector('#itemHistoryContainer');
             var search = view.querySelector('#txtItemSearch').value;
             
-            container.innerHTML = '<p class="loadingText">Searching item history...</p>';
+            container.innerHTML = '<p class="loadingText">' + t('itemhist.loading') + '</p>';
             
             ApiClient.ajax({
                 type: 'GET',
@@ -2066,17 +2669,17 @@ function (BaseView, loading, toast) {
                 dataType: 'json'
             }).then(function(items) {
                 if (!items || items.length === 0) {
-                    container.innerHTML = '<p class="emptyText">No items found matching "' + self.escapeHtml(search) + '".</p>';
+                    container.innerHTML = '<p class="emptyText">' + t('itemhist.none', { q: self.escapeHtml(search) }) + '</p>';
                     return;
                 }
                 
                 var html = '<table class="dataTable">';
                 html += '<thead><tr>';
-                html += '<th>Name</th>';
-                html += '<th>Type</th>';
-                html += '<th>Last Scanned</th>';
-                html += '<th>Current Rating</th>';
-                html += '<th>Last Change</th>';
+                html += '<th>' + t('missing.colName') + '</th>';
+                html += '<th>' + t('missing.colType') + '</th>';
+                html += '<th>' + t('itemhist.colLastScanned') + '</th>';
+                html += '<th>' + t('itemhist.colCurrent') + '</th>';
+                html += '<th>' + t('itemhist.colLastChange') + '</th>';
                 html += '</tr></thead>';
                 html += '<tbody>';
                 
@@ -2088,10 +2691,10 @@ function (BaseView, loading, toast) {
                     
                     html += '<tr>';
                     html += '<td>' + self.escapeHtml(item.Name) + '</td>';
-                    html += '<td><span class="type-badge ' + typeClass + '">' + item.Type + '</span></td>';
+                    html += '<td><span class="type-badge ' + typeClass + '">' + self.escapeHtml(typeLabel(item.Type)) + '</span></td>';
                     html += '<td>' + lastScanned + '</td>';
                     html += '<td>' + rating + critic + '</td>';
-                    html += '<td>' + (item.LastChange ? self.escapeHtml(item.LastChange) : '—') + '</td>';
+                    html += '<td>' + (item.LastChange ? self.escapeHtml(localizeDetail(item.LastChange)) : '—') + '</td>';
                     html += '</tr>';
                 });
                 
@@ -2100,7 +2703,7 @@ function (BaseView, loading, toast) {
                 container.innerHTML = html;
             }).catch(function(err) {
                 console.error('Error searching item history:', err);
-                container.innerHTML = '<p class="emptyText">Error searching item history.</p>';
+                container.innerHTML = '<p class="emptyText">' + t('itemhist.error') + '</p>';
             });
         }
 
