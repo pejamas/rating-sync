@@ -1118,10 +1118,10 @@ namespace RatingSync
 
         public Stream GetThumbImage()
         {
-            return GetType().Assembly.GetManifestResourceStream(GetType().Namespace + ".images.logo.jpg");
+            return GetType().Assembly.GetManifestResourceStream(GetType().Namespace + ".images.logo.png");
         }
 
-        public ImageFormat ThumbImageFormat => ImageFormat.Jpg;
+        public ImageFormat ThumbImageFormat => ImageFormat.Png;
 
         public IEnumerable<PluginPageInfo> GetPages()
         {
@@ -1181,7 +1181,13 @@ namespace RatingSync
         public bool PrioritizeRecentlyAdded { get; set; }
         public int RecentlyAddedDays { get; set; }
         public bool SkipUnratedOnly { get; set; }
-        
+
+        // Tiered rescanning: recently released items use a shorter interval while ratings settle
+        public bool TieredRescanEnabled { get; set; }
+        public int RecentReleaseDays { get; set; }
+        public int RecentRescanIntervalDays { get; set; }
+        public int RecentMaxRescans { get; set; } // 0 = no cap
+
         // Testing
         public bool TestMode { get; set; }
 
@@ -1203,6 +1209,10 @@ namespace RatingSync
             PrioritizeRecentlyAdded = true;
             RecentlyAddedDays = 7;
             SkipUnratedOnly = false;
+            TieredRescanEnabled = false;
+            RecentReleaseDays = 30;
+            RecentRescanIntervalDays = 3;
+            RecentMaxRescans = 0;
             TestMode = false;
         }
     }
@@ -1231,6 +1241,32 @@ namespace RatingSync
         public float? LastCriticRating { get; set; }
         [DataMember]
         public string LastChange { get; set; }
+        [DataMember]
+        public int RecentRescanCount { get; set; }
+    }
+
+    /// <summary>
+    /// Chooses the rescan interval for an item. Recently released items use the shorter
+    /// "recent" interval until they age out or reach the optional rescan cap.
+    /// </summary>
+    public static class TieredRescan
+    {
+        public static bool IsRecentTier(PluginConfiguration config, DateTimeOffset? premiereDate, ScanHistoryEntry entry, DateTime utcNow)
+        {
+            if (!config.TieredRescanEnabled || !premiereDate.HasValue)
+                return false;
+            var release = premiereDate.Value.UtcDateTime;
+            if (release > utcNow || release < utcNow.AddDays(-Math.Max(1, config.RecentReleaseDays)))
+                return false;
+            return config.RecentMaxRescans <= 0 || (entry?.RecentRescanCount ?? 0) < config.RecentMaxRescans;
+        }
+
+        public static int GetIntervalDays(PluginConfiguration config, DateTimeOffset? premiereDate, ScanHistoryEntry entry, DateTime utcNow)
+        {
+            return IsRecentTier(config, premiereDate, entry, utcNow)
+                ? Math.Max(1, config.RecentRescanIntervalDays)
+                : config.RescanIntervalDays;
+        }
     }
 
     [DataContract]
@@ -1706,16 +1742,18 @@ namespace RatingSync
             }
         }
 
-        public static void UpdateItemEntry(string itemId, float? rating, float? criticRating, string change)
+        public static void UpdateItemEntry(string itemId, float? rating, float? criticRating, string change, bool recentTier = false)
         {
             lock (_lock)
             {
+                var previousCount = _history.Items.TryGetValue(itemId, out var previous) ? previous.RecentRescanCount : 0;
                 _history.Items[itemId] = new ScanHistoryEntry
                 {
                     LastScanned = DateTime.UtcNow,
                     LastRating = rating,
                     LastCriticRating = criticRating,
-                    LastChange = change
+                    LastChange = change,
+                    RecentRescanCount = recentTier ? previousCount + 1 : previousCount
                 };
             }
         }
@@ -2235,8 +2273,8 @@ namespace RatingSync
 
                     // Apply smart scanning filters (only for full scans, not selected items)
                     var originalCount = items.Count;
-                    var rescanCutoff = DateTime.UtcNow.AddDays(-config.RescanIntervalDays);
-                    var recentlyAddedCutoff = DateTime.UtcNow.AddDays(-config.RecentlyAddedDays);
+                    var now = DateTime.UtcNow;
+                    var recentlyAddedCutoff = now.AddDays(-config.RecentlyAddedDays);
                     int skippedByHistory = 0;
                     int skippedHasRating = 0;
 
@@ -2244,10 +2282,11 @@ namespace RatingSync
                     {
                         var itemId = i.InternalId.ToString();
                         var historyEntry = ScanHistoryManager.GetEntry(itemId);
-                        
-                        // Skip if scanned recently (within rescan interval)
+                        var rescanCutoff = now.AddDays(-TieredRescan.GetIntervalDays(config, i.PremiereDate, historyEntry, now));
+
+                        // Skip if scanned recently (within this item's rescan interval)
                         if (historyEntry != null && (historyEntry.LastFailed.HasValue
-                            ? historyEntry.LastFailed.Value > DateTime.UtcNow.AddMinutes(-15)
+                            ? historyEntry.LastFailed.Value > now.AddMinutes(-15)
                             : historyEntry.LastScanned > rescanCutoff))
                         {
                             skippedByHistory++;
@@ -2270,6 +2309,11 @@ namespace RatingSync
                         Log($"Smart scan: Skipped {skippedByHistory} recently scanned, {skippedHasRating} already rated", "info");
                     }
                     Log($"Items to process after filtering: {items.Count} (of {originalCount} total)", "info");
+                    if (config.TieredRescanEnabled)
+                    {
+                        var recentTierCount = items.Count(i => TieredRescan.IsRecentTier(config, i.PremiereDate, ScanHistoryManager.GetEntry(i.InternalId.ToString()), now));
+                        Log($"Tiered rescan: {recentTierCount} item(s) released in the last {config.RecentReleaseDays} days use the {config.RecentRescanIntervalDays}-day interval", "info");
+                    }
 
                     // Prioritize recently added content
                     if (config.PrioritizeRecentlyAdded)
@@ -2477,7 +2521,8 @@ namespace RatingSync
                             Log($"Skipped '{itemName}' — {skipReason}", "skip");
                         }
 
-                        if (ratings.Failures.Count == 0) ScanHistoryManager.UpdateItemEntry(itemId, item.CommunityRating, item.CriticRating, itemUpdated ? changeDetails : null);
+                        if (ratings.Failures.Count == 0) ScanHistoryManager.UpdateItemEntry(itemId, item.CommunityRating, item.CriticRating, itemUpdated ? changeDetails : null,
+                            TieredRescan.IsRecentTier(config, item.PremiereDate, ScanHistoryManager.GetEntry(itemId), DateTime.UtcNow));
                         if (ratings.Failures.Count > 0) {
                             ScanHistoryManager.MarkFailed(itemId);
                             errors++;

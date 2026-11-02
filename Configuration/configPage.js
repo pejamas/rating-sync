@@ -503,7 +503,12 @@ function (BaseView, loading, toast) {
                 view.querySelector('#chkPrioritizeRecent').checked = config.PrioritizeRecentlyAdded !== false;
                 view.querySelector('#txtRecentDays').value = config.RecentlyAddedDays || 7;
                 view.querySelector('#chkSkipUnratedOnly').checked = config.SkipUnratedOnly === true;
-                
+                view.querySelector('#chkTieredRescan').checked = config.TieredRescanEnabled === true;
+                view.querySelector('#tieredRescanOptions').style.display = config.TieredRescanEnabled === true ? 'block' : 'none';
+                view.querySelector('#txtRecentReleaseDays').value = config.RecentReleaseDays || 30;
+                view.querySelector('#txtRecentRescanInterval').value = config.RecentRescanIntervalDays || 3;
+                view.querySelector('#txtRecentMaxRescans').value = config.RecentMaxRescans || 0;
+
                 view.querySelector('#chkTestMode').checked = config.TestMode === true;
 
                 var testBanner = view.querySelector('#testModeBanner');
@@ -549,7 +554,11 @@ function (BaseView, loading, toast) {
                 config.PrioritizeRecentlyAdded = view.querySelector('#chkPrioritizeRecent').checked;
                 config.RecentlyAddedDays = parseInt(view.querySelector('#txtRecentDays').value, 10) || 7;
                 config.SkipUnratedOnly = view.querySelector('#chkSkipUnratedOnly').checked;
-                
+                config.TieredRescanEnabled = view.querySelector('#chkTieredRescan').checked;
+                config.RecentReleaseDays = parseInt(view.querySelector('#txtRecentReleaseDays').value, 10) || 30;
+                config.RecentRescanIntervalDays = parseInt(view.querySelector('#txtRecentRescanInterval').value, 10) || 3;
+                config.RecentMaxRescans = Math.max(0, parseInt(view.querySelector('#txtRecentMaxRescans').value, 10) || 0);
+
                 config.TestMode = view.querySelector('#chkTestMode').checked;
 
                 ApiClient.updatePluginConfiguration(pluginId, config).then(function () {
@@ -1173,6 +1182,13 @@ function (BaseView, loading, toast) {
                 if (chkOmdbRateLimit) {
                     chkOmdbRateLimit.addEventListener('change', function() {
                         view.querySelector('#omdbLimitOptions').style.display = this.checked ? 'block' : 'none';
+                    });
+                }
+
+                var chkTieredRescan = view.querySelector('#chkTieredRescan');
+                if (chkTieredRescan) {
+                    chkTieredRescan.addEventListener('change', function() {
+                        view.querySelector('#tieredRescanOptions').style.display = this.checked ? 'block' : 'none';
                     });
                 }
 

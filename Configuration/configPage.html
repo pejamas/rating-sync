@@ -534,7 +534,30 @@
                             <span>Only Scan Unrated Items</span>
                         </label>
                         <div class="fieldDescription" style="margin-bottom: 1em;">When enabled, skips items that already have a community rating.</div>
-                        
+
+                        <label class="checkboxContainer">
+                            <input type="checkbox" is="emby-checkbox" id="chkTieredRescan" />
+                            <span>Enable Tiered Rescanning</span>
+                        </label>
+                        <div class="fieldDescription" style="margin-bottom: 0.5em;">Rescan newly released items more often while their ratings are still settling. Uses the release (premiere) date; items without one use the standard interval.</div>
+                        <div id="tieredRescanOptions" style="margin-bottom: 1em;">
+                            <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="txtRecentReleaseDays">Recent Release Age (Days)</label>
+                                <input id="txtRecentReleaseDays" type="number" is="emby-input" min="1" max="365" />
+                                <div class="fieldDescription">Items released within this many days count as recent. Default: 30</div>
+                            </div>
+                            <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="txtRecentRescanInterval">Recent Item Rescan Interval (Days)</label>
+                                <input id="txtRecentRescanInterval" type="number" is="emby-input" min="1" max="365" />
+                                <div class="fieldDescription">Rescan interval for recent items. Default: 3</div>
+                            </div>
+                            <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="txtRecentMaxRescans">Max Rescans Before Graduating (Optional)</label>
+                                <input id="txtRecentMaxRescans" type="number" is="emby-input" min="0" max="100" />
+                                <div class="fieldDescription">After this many recent-tier rescans, an item moves to the standard interval even if it is still recent. 0 = no cap.</div>
+                            </div>
+                        </div>
+
                         <div class="infoBox">
                             <strong>Tip:</strong> With a free API tier (1,000 requests/day), a library of 5,000 items would take ~5 days for a full scan. Smart scanning ensures newly added content gets ratings immediately.
                         </div>

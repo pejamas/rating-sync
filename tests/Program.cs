@@ -63,6 +63,18 @@ class Program {
    ScanHistoryManager.UpdateItemEntry("42",8,91,"changed");
    Assert(!ScanHistoryManager.GetEntry("42").LastFailed.HasValue,"Success clears failure cooldown");
    ScanHistoryManager.MarkFailed("42"); ScanHistoryManager.Save(); ScanHistoryManager.Initialize(dir); Assert(ScanHistoryManager.GetEntry("42").LastFailed.HasValue,"Failure retry state survives restart"); Assert(File.Exists(Path.Combine(dir,"scan_history.json")),"History saved");
+   var now=DateTime.UtcNow; var tiered=new PluginConfiguration { TieredRescanEnabled=true, RecentReleaseDays=30, RecentRescanIntervalDays=3, RescanIntervalDays=30 };
+   Assert(TieredRescan.GetIntervalDays(tiered,now.AddDays(-10),null,now)==3,"Recent release uses recent interval");
+   Assert(TieredRescan.GetIntervalDays(tiered,now.AddDays(-45),null,now)==30,"Older release uses standard interval");
+   Assert(TieredRescan.GetIntervalDays(tiered,null,null,now)==30,"Missing release date uses standard interval");
+   Assert(TieredRescan.GetIntervalDays(tiered,now.AddDays(5),null,now)==30,"Future release uses standard interval");
+   Assert(TieredRescan.GetIntervalDays(new PluginConfiguration(),now.AddDays(-10),null,now)==30,"Disabled tiering uses standard interval");
+   tiered.RecentMaxRescans=2;
+   ScanHistoryManager.UpdateItemEntry("7",7,null,null,true); ScanHistoryManager.UpdateItemEntry("7",7,null,null,false);
+   Assert(ScanHistoryManager.GetEntry("7").RecentRescanCount==1,"Only recent-tier scans count, count survives updates");
+   Assert(TieredRescan.IsRecentTier(tiered,now.AddDays(-10),ScanHistoryManager.GetEntry("7"),now),"Below cap stays recent");
+   ScanHistoryManager.UpdateItemEntry("7",7,null,null,true);
+   Assert(!TieredRescan.IsRecentTier(tiered,now.AddDays(-10),ScanHistoryManager.GetEntry("7"),now),"Reaching cap graduates to standard interval");
    ProgressTracker.Start(1,0,"test"); ProgressTracker.AddUpdated("42","Film","change"); ProgressTracker.AddChange("42","IMDb",7,8,"OMDb");
    Assert(ProgressTracker.GetProgress(false).UpdatedDetails.Count==0 && ProgressTracker.GetProgress(false).Changes.Count==0,"Summary excludes details");
    Assert(ProgressTracker.GetProgress().Changes["42"][0].Before==7,"Structured before/after retained");

@@ -1,3 +1,11 @@
+## [1.2.0]
+
+- Added optional tiered rescanning: items released within a configurable age (default 30 days) use a shorter rescan interval (default 3 days), with an optional cap on recent-tier rescans before an item graduates to the standard interval.
+- Recent-tier rescans are counted per item in scan history; items without a release date always use the standard interval.
+- Scan logs report how many items are on the recent interval when tiered rescanning is enabled.
+- New vector logo (`images/logo.svg`) and a sharper plugin thumbnail (`images/logo.png`).
+- Existing settings and history remain compatible; tiered rescanning is off by default.
+
 ## [1.1.0]
 
 - Added an admin-only single-request scan API returning a task ID and job ID; preserved the legacy selection route for older players.
