@@ -1,3 +1,7 @@
+## [1.2.2]
+
+- The plugin now targets .NET Standard 2.0, as required by the Emby plugin catalog (previously .NET Framework 4.6.2). No feature changes.
+
 ## [1.2.1]
 
 - Replaced the placeholder plugin ID with a unique GUID (`1770753c-43e9-4454-9782-2c3b44ac06ce`) in preparation for the Emby plugin catalog. Settings and scan history are kept.

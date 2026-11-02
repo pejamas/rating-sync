@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net462</TargetFramework>
+    <!-- The Emby plugin catalog only accepts .NET Standard 2.0 assemblies -->
+    <TargetFramework>netstandard2.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <AssemblyName>RatingSync</AssemblyName>
     <RootNamespace>RatingSync</RootNamespace>
@@ -10,7 +11,7 @@
       - AssemblyVersion/FileVersion must be numeric.
       - InformationalVersion can include prerelease identifiers.
     -->
-    <VersionPrefix>1.2.1</VersionPrefix>
+    <VersionPrefix>1.2.2</VersionPrefix>
     <VersionSuffix></VersionSuffix>
     <AssemblyVersion>$(VersionPrefix).0</AssemblyVersion>
     <FileVersion>$(VersionPrefix).0</FileVersion>
