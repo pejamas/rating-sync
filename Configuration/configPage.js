@@ -624,10 +624,18 @@ function (BaseView, loading, toast) {
 
         renderResultList(view, items, listId, type) {
             var list = view.querySelector('#' + listId);
-            list.innerHTML = '';
-            
             var keys = Object.keys(items || {});
+            var order = (this.resultOrder || {})[listId] || [];
+            if (order.length) keys = order.filter(function(key) { return Object.prototype.hasOwnProperty.call(items, key); });
+            var existing = new Map();
+            Array.prototype.forEach.call(list.children, function(row) { if (row.dataset.itemKey) existing.set(row.dataset.itemKey, row); });
+            var nodes = [];
+            var scroller = list.parentElement;
+            var oldScroll = scroller.scrollTop;
+            var anchor = Array.prototype.find.call(list.children, function(row) { return row.dataset.itemKey && row.getBoundingClientRect().bottom > scroller.getBoundingClientRect().top; });
+            var anchorTop = anchor ? anchor.getBoundingClientRect().top : 0;
             if (keys.length === 0) {
+                list.innerHTML = '';
                 var emptyLi = document.createElement('li');
                 emptyLi.className = 'resultEmpty';
                 if (type === 'success') {
@@ -644,11 +652,19 @@ function (BaseView, loading, toast) {
             // Reverse to show most recent first; cap live list for performance
             keys.reverse();
             var shown = keys.slice(0, 200);
+            if (type === 'success' && Object.keys(this.ratingChanges || {}).length) {
+                var heading = existing.get('__header') || document.createElement('li'); heading.dataset.itemKey = '__header'; heading.className = 'resultItem resultColumns';
+                heading.innerHTML = '<span class="resultItemName">Title</span><span class="ratingChange"><span>Rating</span><span>Before</span><span>After</span><span>Source</span></span>';
+                nodes.push(heading);
+            }
             
             shown.forEach(function(key) {
                 var unpacked = this.unpackDetail(items[key]);
                 var name = unpacked.name || key;
                 var detail = unpacked.detail || '';
+                var signature = JSON.stringify([name, detail, (this.ratingChanges || {})[key] || []]);
+                var previous = existing.get(key);
+                if (previous && previous.dataset.signature === signature) { nodes.push(previous); return; }
                 // Legacy packed-as-detail-only when name empty and key looks like a title
                 if (!unpacked.name && key.indexOf('name:') !== 0 && !/^\d+$/.test(key)) {
                     name = key;
@@ -656,20 +672,51 @@ function (BaseView, loading, toast) {
                 }
                 var li = document.createElement('li');
                 li.className = 'resultItem ' + type;
-                li.innerHTML = '<span class="resultItemName">' + this.escapeHtml(name) + '</span>' +
-                              '<span class="resultItemDetail">' + this.escapeHtml(detail) + '</span>';
-                list.appendChild(li);
+                li.dataset.itemKey = key; li.dataset.signature = signature;
+                var changes = (this.ratingChanges || {})[key] || [];
+                var summary = detail;
+                if (type === 'skipped') {
+                    summary = /already matches|already current/i.test(detail) ? 'Already current' :
+                        /missing.*(id|index|metadata)/i.test(detail) ? 'Missing metadata' : 'Rating unavailable';
+                }
+                li.innerHTML = '<span class="resultItemName">' + this.escapeHtml(name) + '</span>';
+                var cell = document.createElement('div');
+                cell.className = 'resultItemDetail';
+                if (changes.length) {
+                    changes.forEach(function(change) {
+                        var row = document.createElement('div'); row.className = 'ratingChange';
+                        var before = change.Before == null ? '—' : change.Before;
+                        row.innerHTML = '<span>' + this.escapeHtml(change.Rating) + '</span><span>' + this.escapeHtml(before) +
+                            '</span><span>' + this.escapeHtml(change.After) + '</span><span>' + this.escapeHtml(change.Source) + '</span>';
+                        cell.appendChild(row);
+                    }, this);
+                } else {
+                    var shortText = document.createElement('span'); shortText.textContent = summary; cell.appendChild(shortText);
+                }
+                if (detail && (type !== 'success' || changes.length)) {
+                    var more = document.createElement('details');
+                    var label = document.createElement('summary'); label.textContent = 'Details';
+                    var body = document.createElement('p'); body.textContent = detail;
+                    more.appendChild(label); more.appendChild(body); cell.appendChild(more);
+                }
+                li.appendChild(cell);
+                if (previous && previous.querySelector('details[open]')) { var disclosure = li.querySelector('details'); if (disclosure) disclosure.open = true; }
+                nodes.push(li);
             }, this);
 
             if (keys.length > shown.length) {
                 var more = document.createElement('li');
                 more.className = 'resultEmpty';
                 more.textContent = 'Showing latest ' + shown.length + ' of ' + keys.length;
-                list.appendChild(more);
+                nodes.push(more);
             }
+            nodes.forEach(function(node, index) { if (list.children[index] !== node) list.insertBefore(node, list.children[index] || null); });
+            while (list.children.length > nodes.length) list.removeChild(list.lastElementChild);
+            if (oldScroll > 0 && anchor && list.contains(anchor)) scroller.scrollTop += anchor.getBoundingClientRect().top - anchorTop;
+            else if (oldScroll === 0) scroller.scrollTop = 0;
         }
 
-        updateProgressUI(view, progress) {
+        updateProgressUI(view, progress, summaryOnly) {
             if (!progress) return;
             
             // Handle both PascalCase and camelCase property names
@@ -701,6 +748,8 @@ function (BaseView, loading, toast) {
             view.querySelector('#statUpdated').textContent = updatedItems;
             view.querySelector('#statSkipped').textContent = skippedItems;
             view.querySelector('#statErrors').textContent = errorItems;
+            view.querySelector('#statUpdated').classList.toggle('hasResults', updatedItems > 0);
+            view.querySelector('#statErrors').classList.toggle('hasResults', errorItems > 0);
             view.querySelector('#updatedBadge').textContent = updatedItems;
             view.querySelector('#skippedBadge').textContent = skippedItems;
             view.querySelector('#failureBadge').textContent = errorItems;
@@ -737,9 +786,13 @@ function (BaseView, loading, toast) {
             }
 
             // Render result lists
-            this.renderResultList(view, updatedDetails, 'updatedList', 'success');
-            this.renderResultList(view, skippedDetails, 'skippedList', 'skipped');
-            this.renderResultList(view, failureDetails, 'failureList', 'failure');
+            if (!summaryOnly) {
+                this.ratingChanges = progress.Changes || progress.changes || {};
+                this.resultOrder = { updatedList: progress.UpdatedOrder || progress.updatedOrder || [], skippedList: progress.SkippedOrder || progress.skippedOrder || [], failureList: progress.FailureOrder || progress.failureOrder || [] };
+                this.renderResultList(view, updatedDetails, 'updatedList', 'success');
+                this.renderResultList(view, skippedDetails, 'skippedList', 'skipped');
+                this.renderResultList(view, failureDetails, 'failureList', 'failure');
+            }
 
             // Update start time for elapsed tracking
             if (startTime && !this.startTime) {
@@ -783,10 +836,10 @@ function (BaseView, loading, toast) {
             
             return ApiClient.ajax({
                 type: 'GET',
-                url: ApiClient.getUrl('RatingSync/Progress'),
+                url: ApiClient.getUrl('RatingSync/Progress', { SummaryOnly: !forceFullRender }),
                 dataType: 'json'
             }).then(function(progress) {
-                return self.updateProgressUI(view, progress);
+                return self.updateProgressUI(view, progress, !forceFullRender);
             }).catch(function(err) {
                 console.error('Error fetching progress:', err);
                 return null;
@@ -825,8 +878,10 @@ function (BaseView, loading, toast) {
                 // Reset stats display
                 view.querySelector('#statProcessed').textContent = '0';
                 view.querySelector('#statUpdated').textContent = '0';
+                view.querySelector('#statUpdated').classList.remove('hasResults');
                 view.querySelector('#statSkipped').textContent = '0';
                 view.querySelector('#statErrors').textContent = '0';
+                view.querySelector('#statErrors').classList.remove('hasResults');
                 view.querySelector('#progressBarFill').style.width = '0%';
                 view.querySelector('#progressBarText').textContent = '0%';
                 view.querySelector('#currentItemBox').classList.add('hide');
@@ -851,62 +906,28 @@ function (BaseView, loading, toast) {
                     addedWithinDays = parseInt(addedWithinSelect.value || '0', 10) || 0;
                 }
                 
-                // Function to start the task
-                function startTask() {
-                    ApiClient.getScheduledTasks().then(function(tasks) {
-                        var task = tasks.find(function(t) { return t.Key === 'RatingSync'; });
-                        
-                        if (task) {
-                            if (task.State === 'Running') {
-                                self.setStatus(view, 'warning', 'Already running');
-                                self.stopRefresh(view);
-                                toast({ text: 'A rating sync is already running.' });
-                                return;
-                            }
-                            ApiClient.startScheduledTask(task.Id).then(function() {
-                                self.startTime = new Date();
-                                self.startPolling(view, task.Id);
-                            }).catch(function(err) {
-                                self.setStatus(view, 'error', 'Failed to start');
-                                self.stopRefresh(view);
-                                toast({ text: 'Failed to start task: ' + err });
-                            });
-                        } else {
-                            self.setStatus(view, 'error', 'Task not found');
-                            self.stopRefresh(view);
-                            toast({ text: 'Task not found - restart Emby Server' });
-                        }
-                    });
-                }
-                
-                // If any selection is made, queue selected items first
-                if (libraryId || seriesId || seasonId || episodeId || movieId) {
-                    self.setStatus(view, 'running', 'Queuing selected items...');
-                    
-                    ApiClient.ajax({
-                        type: 'POST',
-                        url: ApiClient.getUrl('RatingSync/RunSelected'),
-                        data: JSON.stringify({
-                            LibraryId: libraryId || '',
-                            SeriesId: seriesId || '',
-                            SeasonId: seasonId || '',
-                            EpisodeId: episodeId || '',
-                            MovieId: movieId || '',
-                            AddedWithinDays: addedWithinDays || 0
-                        }),
-                        contentType: 'application/json'
-                    }).then(function() {
-                        startTask();
-                    }).catch(function(err) {
-                        console.error('Error queuing selected items:', err);
-                        self.setStatus(view, 'error', 'Queue failed');
-                        self.stopRefresh(view);
-                        toast({ text: 'Failed to queue selected items. Full library scan was not started.' });
-                    });
-                } else {
-                    // No selection - run full scan
-                    startTask();
-                }
+                var fullLibrary = view.querySelector('#scanScope').value === 'all';
+                if (fullLibrary) { libraryId = seriesId = seasonId = episodeId = movieId = ''; }
+                else if (!libraryId) { self.stopRefresh(view); self.setStatus(view, 'warning', 'Choose a library first'); return; }
+                self.launchScan(view, {
+                    FullLibrary: fullLibrary,
+                    LibraryId: libraryId || '', SeriesId: seriesId || '', SeasonId: seasonId || '',
+                    EpisodeId: episodeId || '', MovieId: movieId || '', AddedWithinDays: addedWithinDays || 0
+                });
+            });
+        }
+
+        launchScan(view, payload) {
+            var self = this;
+            return ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('RatingSync/Start'),
+                data: JSON.stringify(payload), contentType: 'application/json', dataType: 'json'
+            }).then(function(result) {
+                self.startTime = new Date();
+                self.startPolling(view, result.TaskId || result.taskId);
+            }).catch(function() {
+                self.setStatus(view, 'error', 'Could not start scan');
+                self.stopRefresh(view);
+                toast({ text: 'Scan not started. Check your selection and whether another scan is running.' });
             });
         }
 
@@ -926,23 +947,21 @@ function (BaseView, loading, toast) {
                 self.updateElapsedTime(view);
             }, 1000);
 
-            // Poll progress every 1.5 seconds
+            var polling = false;
             self.pollInterval = setInterval(function() {
+                if (polling) return;
+                polling = true;
                 self._pollTick++;
-                self.fetchProgress(view, false);
-                if (self._pollTick % 4 === 0) {
-                    self.updateApiCounters(view);
-                }
-                
-                ApiClient.getScheduledTask(taskId).then(function(task) {
-                    if (task.State === 'Idle') {
-                        self.fetchProgress(view, true).then(function(stats) {
-                            // Avoid finishing on a brief Idle race while progress is still running
-                            if (stats && stats.isRunning) return;
-                            self.finishRefresh(view, stats);
-                        });
-                    }
-                });
+                self.fetchProgress(view, self._pollTick % 4 === 0).then(function() {
+                    if (self._pollTick % 4 === 0) self.updateApiCounters(view);
+                    return ApiClient.getScheduledTask(taskId);
+                }).then(function(task) {
+                    if (task.State === 'Idle') return self.fetchProgress(view, true).then(function(stats) {
+                        if (stats && !stats.isRunning) self.finishRefresh(view, stats);
+                    });
+                }).catch(function() {
+                    self.setStatus(view, 'warning', 'Connection interrupted. Retrying…');
+                }).then(function() { polling = false; });
             }, 1500);
         }
 
@@ -1032,8 +1051,10 @@ function (BaseView, loading, toast) {
             }).then(function() {
                 view.querySelector('#statProcessed').textContent = '0';
                 view.querySelector('#statUpdated').textContent = '0';
+                view.querySelector('#statUpdated').classList.remove('hasResults');
                 view.querySelector('#statSkipped').textContent = '0';
                 view.querySelector('#statErrors').textContent = '0';
+                view.querySelector('#statErrors').classList.remove('hasResults');
                 view.querySelector('#progressBarFill').style.width = '0%';
                 view.querySelector('#progressBarText').textContent = '0%';
                 view.querySelector('#elapsedTime').textContent = '';
@@ -1049,8 +1070,10 @@ function (BaseView, loading, toast) {
                 // Just clear locally if API fails
                 view.querySelector('#statProcessed').textContent = '0';
                 view.querySelector('#statUpdated').textContent = '0';
+                view.querySelector('#statUpdated').classList.remove('hasResults');
                 view.querySelector('#statSkipped').textContent = '0';
                 view.querySelector('#statErrors').textContent = '0';
+                view.querySelector('#statErrors').classList.remove('hasResults');
                 view.querySelector('#updatedList').innerHTML = '<li class="resultEmpty">No items updated yet</li>';
                 view.querySelector('#skippedList').innerHTML = '<li class="resultEmpty">No items skipped yet</li>';
                 view.querySelector('#failureList').innerHTML = '<li class="resultEmpty">No failures</li>';
@@ -1103,6 +1126,18 @@ function (BaseView, loading, toast) {
                 self.bindTabNavigation(view);
                 self.bindResultTabs(view);
                 self.bindLibrarySelection(view);
+                view.querySelector('#scanScope').addEventListener('change', function() {
+                    var target = this.value === 'target';
+                    view.querySelector('#targetSelection').classList.toggle('hide', !target);
+                    view.querySelector('#scopeInfo').textContent = target ? 'Choose a library, then narrow to a show, season, episode or movie. Selected items bypass smart-scan rules.' : 'Uses your saved item types and smart-scan rules.';
+                });
+                view.querySelectorAll('[data-history-view]').forEach(function(button) {
+                    button.addEventListener('click', function() {
+                        view.querySelectorAll('[data-history-view]').forEach(function(b) { b.classList.toggle('active', b === button); });
+                        ['historyScansPanel','historyMissingPanel','historyItemsPanel'].forEach(function(id) { view.querySelector('#'+id).classList.toggle('hide', id !== button.dataset.historyView); });
+                    });
+                });
+                view.querySelector('#historyOutcome').addEventListener('change', function() { self.renderScanHistory(view); });
 
                 var form = view.querySelector('.imdbRefreshConfigForm');
                 if (form) {
@@ -1267,44 +1302,37 @@ function (BaseView, loading, toast) {
             }).then(function(sessions) {
                 self.scanHistorySessions = sessions || [];
 
+                self.renderScanHistory(view);
+            }).catch(function(err) {
+                console.error('Error loading scan history:', err);
+                container.innerHTML = '<p class="emptyText">Error loading scan history.</p>';
+            });
+        }
+
+        renderScanHistory(view) {
+            var self = this;
+            var container = view.querySelector('#sessionList');
+            var sessions = this.scanHistorySessions || [];
                 if (!sessions || sessions.length === 0) {
                     container.innerHTML = '<p class="emptyText">No scan history yet. Run a scan to see history here.</p>';
                     return;
                 }
                 
-                var html = '';
+                var filter = view.querySelector('#historyOutcome').value;
+                var html = '<table class="scanTable"><thead><tr><th>Started</th><th>Result</th><th>Changes</th><th>Duration</th><th></th></tr></thead><tbody>';
+                var matches = 0;
                 sessions.forEach(function(session, idx) {
-                    var startDate = new Date(session.StartTime);
-                    var endDate = session.EndTime ? new Date(session.EndTime) : null;
-                    var duration = endDate ? self.formatElapsed(endDate - startDate) : 'In progress...';
-                    
-                    var cardClass = 'sessionCard';
-                    if (session.WasCancelled) cardClass += ' cancelled';
-                    if (session.ErrorItems > 0) cardClass += ' hasErrors';
-                    
-                    html += '<div class="' + cardClass + '" data-index="' + idx + '" role="button" tabindex="0">';
-                    html += '<div class="sessionHeader">';
-                    html += '<div class="sessionHeaderLeft">';
-                    html += '<div class="sessionDate">' + self.formatDateTime(startDate) + '</div>';
-                    html += '</div>';
-                    html += '<div class="sessionHeaderRight">';
-                    html += '<span class="sessionDuration">' + duration + (session.WasCancelled ? ' (Cancelled)' : '') + '</span>';
-                    if (session.SessionId) {
-                        html += '<button type="button" class="sessionDeleteBtn" data-action="delete-scan" data-session-id="' + self.escapeHtml(session.SessionId) + '">Delete</button>';
-                    }
-                    html += '</div>';
-                    html += '</div>';
-                    html += '<div class="sessionStats">';
-                    html += '<span class="sessionStat"><span class="label">Total: </span><span class="value">' + session.TotalItems + '</span></span>';
-                    html += '<span class="sessionStat updated"><span class="label">Updated: </span><span class="value">' + session.UpdatedItems + '</span></span>';
-                    html += '<span class="sessionStat skipped"><span class="label">Skipped: </span><span class="value">' + session.SkippedItems + '</span></span>';
-                    html += '<span class="sessionStat errors"><span class="label">Errors: </span><span class="value">' + session.ErrorItems + '</span></span>';
-                    html += '</div>';
-
-                    html += '<div class="sessionCta"><span>View report</span></div>';
-                    html += '</div>';
+                    if (filter === 'updated' && !session.UpdatedItems || filter === 'errors' && !session.ErrorItems || filter === 'cancelled' && !session.WasCancelled) return;
+                    matches++;
+                    var start = new Date(session.StartTime);
+                    var duration = session.EndTime ? self.formatElapsed(new Date(session.EndTime)-start) : 'Running';
+                    var outcome = session.WasCancelled ? 'Stopped' : session.ErrorItems ? 'Needs attention' : !session.EndTime ? 'Running' : 'Complete';
+                    var changes = session.UpdatedItems ? session.UpdatedItems + ' updated' : 'No changes';
+                    if (session.ErrorItems) changes += ' · ' + session.ErrorItems + ' errors';
+                    html += '<tr class="sessionCard" data-index="'+idx+'" tabindex="0"><td>'+self.escapeHtml(self.formatDateTime(start))+'<small>'+self.escapeHtml(session.Scope || 'Rating scan')+'</small></td><td class="outcome-'+(session.ErrorItems ? 'error' : !session.EndTime ? 'running' : session.WasCancelled ? 'stopped' : 'complete')+'">'+outcome+'</td><td>'+changes+'<small>'+session.ProcessedItems+' processed'+(session.SkippedItems ? ' · '+session.SkippedItems+' skipped' : '')+'</small></td><td>'+duration+'</td><td><button type="button">View</button></td></tr>';
                 });
-                
+                html += '</tbody></table>';
+                if (!matches) html = '<p class="emptyText">No scans match this filter.</p>';
                 container.innerHTML = html;
 
                 // Click-to-open report (event delegation)
@@ -1335,10 +1363,6 @@ function (BaseView, loading, toast) {
                     if (isNaN(index) || !self.scanHistorySessions || !self.scanHistorySessions[index]) return;
                     self.openScanReport(view, self.scanHistorySessions[index]);
                 };
-            }).catch(function(err) {
-                console.error('Error loading scan history:', err);
-                container.innerHTML = '<p class="emptyText">Error loading scan history.</p>';
-            });
         }
 
         openScanReport(view, session) {
@@ -1349,7 +1373,7 @@ function (BaseView, loading, toast) {
             this.activeScanReportSession = session || null;
             this.activeScanReport = null;
             this.scanReportState = {
-                activeTab: 'overview',
+                activeTab: session && session.ErrorItems ? 'errors' : session && session.UpdatedItems ? 'updated' : 'skipped',
                 filterText: '',
                 pageSize: 100,
                 page: { updated: 1, skipped: 1, errors: 1 }
@@ -1487,13 +1511,13 @@ function (BaseView, loading, toast) {
                 : src.TotalItems;
 
             var updatedEntries = report
-                ? (report.Updated || []).map(function(e) { return { name: e.Name, detail: e.Detail }; })
+                ? (report.Updated || []).map(function(e) { return { name: e.Name, detail: e.Detail, changes: e.Changes || [] }; })
                 : self.objectToPairs(src.UpdatedDetails);
             var skippedEntries = report
-                ? (report.Skipped || []).map(function(e) { return { name: e.Name, detail: e.Detail }; })
+                ? (report.Skipped || []).map(function(e) { return { name: e.Name, detail: e.Detail, changes: e.Changes || [] }; })
                 : self.objectToPairs(src.SkippedDetails);
             var errorEntries = report
-                ? (report.Errors || []).map(function(e) { return { name: e.Name, detail: e.Detail }; })
+                ? (report.Errors || []).map(function(e) { return { name: e.Name, detail: e.Detail, changes: e.Changes || [] }; })
                 : self.objectToPairs(src.FailureDetails);
 
             if ((!updatedEntries || updatedEntries.length === 0) && src.UpdatedItemNames && src.UpdatedItemNames.length > 0) {
@@ -1516,18 +1540,17 @@ function (BaseView, loading, toast) {
             }
 
             html += '<div class="reportMeta">';
-            html += self.reportMetaBox('Started', startDate ? self.formatDateTime(startDate) : '');
-            html += self.reportMetaBox('Finished', endDate ? self.formatDateTime(endDate) : (src.WasCancelled ? 'Cancelled' : 'In progress'));
-            html += self.reportMetaBox('Duration', duration || (endDate ? '' : 'In progress'));
+            html += self.reportMetaBox('Result', statusText);
             html += self.reportMetaBox('Processed', processed + ' / ' + src.TotalItems);
-            html += self.reportMetaBox('Updated', String(src.UpdatedItems || 0));
-            html += self.reportMetaBox('Skipped', String(src.SkippedItems || 0));
-            html += self.reportMetaBox('Errors', String(src.ErrorItems || 0));
-            html += self.reportMetaBox('OMDb calls', String(src.OmdbRequests || 0));
-            html += self.reportMetaBox('MDBList calls', String(src.MdbListRequests || 0));
-            html += self.reportMetaBox('IMDb fallback', String(src.ImdbScrapeRequests || 0));
-            html += self.reportMetaBox('Status', statusText);
+            html += self.reportMetaBox('Duration', duration);
             html += '</div>';
+            html += '<details class="scanTechnical"><summary>Scan details and API usage</summary><div class="reportMeta">';
+            html += self.reportMetaBox('Started', startDate ? self.formatDateTime(startDate) : '');
+            html += self.reportMetaBox('Finished', endDate ? self.formatDateTime(endDate) : '');
+            html += self.reportMetaBox('OMDb requests', String(src.OmdbRequests || 0));
+            html += self.reportMetaBox('MDBList requests', String(src.MdbListRequests || 0));
+            html += self.reportMetaBox('IMDb fallback', String(src.ImdbScrapeRequests || 0));
+            html += '</div></details>';
 
             html += '<div class="reportFilterRow">';
             html += '<input id="scanReportFilter" type="text" placeholder="Search (name or details)…" value="' + self.escapeHtml(state.filterText || '') + '" />';
@@ -1719,10 +1742,17 @@ function (BaseView, loading, toast) {
             slice.forEach(function(item) {
                 var name = item && item.name ? item.name : '';
                 var detail = item && item.detail ? item.detail : '';
-                html += '<li class="reportListItem ' + typeClass + '">' +
-                    '<div class="reportItemName">' + this.escapeHtml(name) + '</div>' +
-                    '<div class="reportItemDetail">' + this.escapeHtml(detail) + '</div>' +
-                    '</li>';
+                html += '<li class="reportListItem ' + typeClass + '"><div class="reportItemName">' + this.escapeHtml(name) + '</div><div class="reportItemDetail">';
+                if (item.changes && item.changes.length) {
+                    html += '<div class="ratingChange resultColumns"><span>Rating</span><span>Before</span><span>After</span><span>Source</span></div>';
+                    item.changes.forEach(function(change) {
+                        html += '<div class="ratingChange"><span>'+this.escapeHtml(change.Rating)+'</span><span>'+this.escapeHtml(change.Before == null ? '—' : change.Before)+'</span><span>'+this.escapeHtml(change.After)+'</span><span>'+this.escapeHtml(change.Source)+'</span></div>';
+                    }, this);
+                } else if (typeClass === 'skipped') {
+                    html += /already matches|already current/i.test(detail) ? 'Already current' : /missing.*(id|index|metadata)/i.test(detail) ? 'Missing metadata' : 'Rating unavailable';
+                    html += '<details><summary>Details</summary><p>'+this.escapeHtml(detail)+'</p></details>';
+                } else html += this.escapeHtml(detail);
+                html += '</div></li>';
             }.bind(this));
             html += '</ul>';
             html += '</div>';
@@ -1985,8 +2015,10 @@ function (BaseView, loading, toast) {
             self.setStatus(view, 'running', 'Queuing selected item...');
             view.querySelector('#statProcessed').textContent = '0';
             view.querySelector('#statUpdated').textContent = '0';
+                view.querySelector('#statUpdated').classList.remove('hasResults');
             view.querySelector('#statSkipped').textContent = '0';
             view.querySelector('#statErrors').textContent = '0';
+                view.querySelector('#statErrors').classList.remove('hasResults');
             view.querySelector('#progressBarFill').style.width = '0%';
             view.querySelector('#progressBarText').textContent = '0%';
             view.querySelector('#currentItemBox').classList.add('hide');
@@ -2018,39 +2050,7 @@ function (BaseView, loading, toast) {
                 return;
             }
 
-            function startTask() {
-                ApiClient.getScheduledTasks().then(function(tasks) {
-                    var task = tasks.find(function(t) { return t.Key === 'RatingSync'; });
-                    if (task) {
-                        ApiClient.startScheduledTask(task.Id).then(function() {
-                            self.startTime = new Date();
-                            self.startPolling(view, task.Id);
-                        }).catch(function(err) {
-                            self.setStatus(view, 'error', 'Failed to start');
-                            self.stopRefresh(view);
-                            toast({ text: 'Failed to start task: ' + err });
-                        });
-                    } else {
-                        self.setStatus(view, 'error', 'Task not found');
-                        self.stopRefresh(view);
-                        toast({ text: 'Task not found - restart Emby Server' });
-                    }
-                });
-            }
-
-            ApiClient.ajax({
-                type: 'POST',
-                url: ApiClient.getUrl('RatingSync/RunSelected'),
-                data: JSON.stringify(payload),
-                contentType: 'application/json'
-            }).then(function() {
-                startTask();
-            }).catch(function(err) {
-                console.error('Error queuing selected item:', err);
-                self.setStatus(view, 'error', 'Failed to queue');
-                self.stopRefresh(view);
-                toast({ text: 'Failed to queue selected item: ' + err });
-            });
+            self.launchScan(view, payload);
         }
 
         searchItemHistory(view) {

@@ -26,14 +26,24 @@
 ## Features
 
 - Update Movies, Series, and optionally Episodes
-- Prefer OMDb, MDBList, or both (configurable)
-- Optional IMDb ratings fallback using IMDb official free datasets, with a page lookup as secondary
-- Rate limiting and daily API limits
-- Smart scanning (rescan interval, recently added first, optional skip already-rated)
-- Live progress with updated / skipped / error details
-- Scan history and per-session reports
-- Missing-data search and item-level scan history
+- Prefer OMDb, MDBList, or both, with an optional IMDb official-dataset fallback
+- Pace each provider independently and enforce configurable daily API limits
+- Smart scanning prioritizes recent additions and avoids unnecessary repeat requests
+- Run full-library or precisely targeted movie, series, season, or episode scans
+- Follow live results with stable ordering, expandable explanations, and before/after rating changes
+- Filter scan history, inspect detailed reports, copy results, or download report JSON
+- Find missing community or critic ratings and rescan an item directly
+- Retry provider failures sooner without treating them as unchanged ratings
 - Available from the Emby dashboard sidebar under Server
+
+## What's new in 1.1.0
+
+- Safer queued scans prevent expired selections from falling back to a full-library run and reject conflicting starts.
+- IMDb episode lookups now use a reusable on-disk index with negative caching and automatic dataset-generation invalidation.
+- Network requests and dataset downloads are cancellation-aware; history and reports are written atomically.
+- Results identify the source of each rating change and distinguish provider failures from genuinely unchanged data.
+- The redesigned interface separates Run, scan history, missing ratings, and item lookup into focused views.
+- Backend regression checks now run in CI while existing settings and history remain compatible.
 
 ## Install
 
@@ -75,21 +85,27 @@ Control how often items are rescanned and what to prioritize.
 
 ### Run
 
-Start a full or targeted refresh and watch progress.
+Choose the scan scope, start a full or targeted refresh, and follow results as they complete.
 
 <img src="docs/screenshots/run.png" alt="Run rating refresh" width="900" />
 
 ### Scan report
 
-Breakdown of updates, skips, errors, and API usage.
+Search and filter updates, skips, and errors; expand explanations or download the full report as JSON.
 
 <img src="docs/screenshots/scan-report.png" alt="Scan report" width="900" />
 
 ### History
 
-Recent scans, missing data, and per-item history.
+Filter previous scans by outcome and open any run for its detailed report.
 
 <img src="docs/screenshots/history.png" alt="Scan history" width="900" />
+
+### Missing ratings
+
+Find items missing community or critic ratings, then send a selected item directly to a targeted scan.
+
+<img src="docs/screenshots/missing-ratings.png" alt="Missing ratings search" width="900" />
 
 PNG files live in [`docs/screenshots/`](docs/screenshots/).
 

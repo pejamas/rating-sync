@@ -10,7 +10,7 @@
       - AssemblyVersion/FileVersion must be numeric.
       - InformationalVersion can include prerelease identifiers.
     -->
-    <VersionPrefix>1.0.5</VersionPrefix>
+    <VersionPrefix>1.1.0</VersionPrefix>
     <VersionSuffix></VersionSuffix>
     <AssemblyVersion>$(VersionPrefix).0</AssemblyVersion>
     <FileVersion>$(VersionPrefix).0</FileVersion>
@@ -20,6 +20,7 @@
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
 
+  <ItemGroup><Compile Remove="tests/**/*.cs" /></ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Configuration\configPage.html" />
     <EmbeddedResource Include="Configuration\configPage.js" />
@@ -51,6 +52,6 @@
 
   <!-- Fallback: Download Emby stubs from NuGet if EmbyPath not set -->
   <ItemGroup Condition="!Exists('$(EmbyPath)')">
-    <PackageReference Include="MediaBrowser.Server.Core" Version="4.9.0" />
+    <PackageReference Include="MediaBrowser.Server.Core" Version="4.9.1.80" />
   </ItemGroup>
 </Project>

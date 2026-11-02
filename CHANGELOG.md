@@ -1,3 +1,17 @@
+## [1.1.0]
+
+- Added an admin-only single-request scan API returning a task ID and job ID; preserved the legacy selection route for older players.
+- Expired or invalid targeted scans cannot silently become full-library scans; pending/running requests reject conflicting starts.
+- Added an IMDb episode disk index with negative caching, generation invalidation and bounded retained indexes.
+- Removed per-item local delays; provider requests are paced independently and checked against daily quotas before sending.
+- Movie/series lookups use the correct MDBList endpoint. Critic-only gaps are included in missing-rating scans.
+- Added cancellation-aware downloads/requests, dataset refresh failure backoff, atomic history/report writes and less frequent checkpoints.
+- Provider failures are distinguished from unchanged ratings, with a 15-minute retry cooldown rather than the normal rescan interval.
+- Added structured before/after rating changes, field-specific sources and explicit live result ordering.
+- Lighter charcoal Arloes companion interface: explicit scan scope, compact results, scan filters, separate missing-rating and item-lookup views, expandable explanations and no emojis.
+- Live results retain completion order, open details and scroll position while polling. Summary polls omit large detail payloads.
+- Added backend and browser regression checks. Existing settings/history remain compatible.
+
 # Changelog
 
 All notable changes to this project will be documented in this file.

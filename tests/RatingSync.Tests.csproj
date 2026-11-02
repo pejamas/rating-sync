@@ -1,0 +1,1 @@
+<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net462</TargetFramework><OutputType>Exe</OutputType><LangVersion>latest</LangVersion><AssemblyName>RatingSync.Tests</AssemblyName><AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects></PropertyGroup><ItemGroup><ProjectReference Include="../RatingSync.csproj" /></ItemGroup></Project>
