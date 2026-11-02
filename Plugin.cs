@@ -1110,7 +1110,7 @@ namespace RatingSync
 
         public override string Name => "Rating Sync";
 
-        public override Guid Id => new Guid("12345678-1234-1234-1234-123456789012");
+        public override Guid Id => new Guid("1770753c-43e9-4454-9782-2c3b44ac06ce");
 
         public override string Description => "Refreshes community and critic ratings from IMDb and Rotten Tomatoes";
 

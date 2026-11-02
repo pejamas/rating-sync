@@ -1,3 +1,6 @@
+## [1.2.1]
+
+- Replaced the placeholder plugin ID with a unique GUID (`1770753c-43e9-4454-9782-2c3b44ac06ce`) in preparation for the Emby plugin catalog. Settings and scan history are kept.
 ## [1.2.0]
 
 - Added optional tiered rescanning: items released within a configurable age (default 30 days) use a shorter rescan interval (default 3 days), with an optional cap on recent-tier rescans before an item graduates to the standard interval.
