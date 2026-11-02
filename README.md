@@ -1,8 +1,6 @@
 <p align="center">
-  <img src="images/logo.svg" alt="Rating Sync logo" width="640" />
+  <img src="images/logo.svg" alt="Rating Sync logo" width="960" />
 </p>
-
-<h1 align="center">Rating Sync</h1>
 
 <p align="center">
   Emby plugin that syncs IMDb community ratings and Rotten Tomatoes critic ratings into your library metadata.
@@ -36,27 +34,6 @@
 - Find missing community or critic ratings and rescan an item directly
 - Retry provider failures sooner without treating them as unchanged ratings
 - Available from the Emby dashboard sidebar under Server
-
-## What's new in 1.2.0
-
-- **Tiered rescanning:** newly released titles can be rescanned on a shorter interval while their ratings are still settling, without spending API quota on older items. See [Tiered rescanning](#tiered-rescanning).
-- New logo and a sharper plugin thumbnail.
-
-See [CHANGELOG.md](CHANGELOG.md) for earlier releases.
-
-## Tiered rescanning
-
-Ratings move a lot in the first weeks after release, then settle. With tiered rescanning enabled (Settings > Smart Scanning), each item gets one of two intervals:
-
-| Item | Rescan interval |
-| --- | --- |
-| Released within **Recent Release Age** (default 30 days) | **Recent Item Rescan Interval** (default 3 days) |
-| Everything else | **Rescan Interval** (default 30 days) |
-
-- "Released" uses the item's premiere date. Items without one, or with a future date, use the standard interval.
-- **Max Rescans Before Graduating** (optional, 0 = no cap) moves an item to the standard interval after that many recent-tier rescans, even if it is still recent.
-- It pairs with **Prioritize Recently Added Content**: that setting controls scan *order* by date added; tiered rescanning controls *how often* by release date.
-- Off by default; existing settings and history are unaffected.
 
 ## Install
 
