@@ -112,15 +112,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node --check Configuration/configPage.js
 
-      - name: Package
+      - name: Verify build output
         shell: pwsh
         run: |
-          $outDir = Join-Path $PWD "bin\Release"
-          $dll = Join-Path $outDir "RatingSync.dll"
+          $dll = Join-Path $PWD "bin\Release\RatingSync.dll"
           if (!(Test-Path $dll)) { throw "Missing build output: $dll" }
-          $zip = Join-Path $PWD ("RatingSync-" + "${{ needs.check.outputs.tag }}" + ".zip")
-          if (Test-Path $zip) { Remove-Item $zip -Force }
-          Compress-Archive -Path $dll -DestinationPath $zip
+          Get-Item $dll | Select-Object FullName, Length
 
       - name: Generate release notes
         shell: pwsh
@@ -171,4 +168,3 @@ jobs:
           body_path: release-notes.md
           files: |
             bin/Release/RatingSync.dll
-            RatingSync-${{ needs.check.outputs.tag }}.zip

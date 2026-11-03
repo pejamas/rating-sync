@@ -20,8 +20,8 @@ Pushing the csproj change triggers the **Release** workflow, which:
 1. reads the version from `RatingSync.csproj` and derives the tag (`v1.3.0`);
 2. skips the run when that version already has a release;
 3. builds in Release, runs the backend regression checks and `node --check`;
-4. publishes a GitHub Release (creating the tag) with `RatingSync.dll` and
-   `RatingSync-v1.3.0.zip`, using the `## [1.3.0]` section as release notes.
+4. publishes a GitHub Release (creating the tag) with `RatingSync.dll`, using
+   the `## [1.3.0]` section as release notes.
 
 Edit the generated CHANGELOG section before pushing if you want real notes —
 the workflow reads it at build time.
