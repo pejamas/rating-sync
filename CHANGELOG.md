@@ -1,6 +1,10 @@
 ## [1.2.2]
 
 - The plugin now targets .NET Standard 2.0, as required by the Emby plugin catalog (previously .NET Framework 4.6.2). No feature changes.
+- Simplified Chinese interface, following the Emby UI language: plugin name, scheduled task, and the whole configuration page (settings, run, history, scan report, missing ratings, item lookup) are translated, while scan details stay canonical English on disk and are localized at render time.
+- Merged the upstream 1.1.0/1.2.x UI rework (Arloes companion layout, explicit scan scope, separate missing-rating and item-lookup views) with the localization layer wired end to end.
+- Scan scope, rating labels, and delete-scan results are localized from stable codes instead of pre-formatted English strings.
+- Releases are published from CI: a push to `main` builds and publishes the version in `RatingSync.csproj` whenever that version has no release yet, and tags still work for re-releases. See `RELEASING.md`.
 
 ## [1.2.1]
 

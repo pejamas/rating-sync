@@ -1,130 +1,130 @@
 <p align="center">
-  <img src="images/logo.svg" alt="Rating Sync logo" width="960" />
+  <img src="images/logo.svg" alt="评分同步 logo" width="960" />
 </p>
 
 <p align="center">
-  Emby plugin that syncs IMDb community ratings and Rotten Tomatoes critic ratings into your library metadata.
+  Emby 插件：把 IMDb 社区评分与烂番茄影评人评分同步进媒体库元数据。
 </p>
 
 <p align="center">
-  <a href="#features">Features</a> ·
-  <a href="#install">Install</a> ·
-  <a href="#quick-start">Quick start</a> ·
-  <a href="#screenshots">Screenshots</a> ·
-  <a href="https://github.com/pejamas/rating-sync/releases">Download</a>
+  <a href="#功能">功能</a> ·
+  <a href="#安装">安装</a> ·
+  <a href="#快速开始">快速开始</a> ·
+  <a href="#截图">截图</a> ·
+  <a href="https://github.com/pejamas/rating-sync/releases">下载</a>
 </p>
 
 <p align="center">
   <a href="https://github.com/pejamas/rating-sync/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pejamas/rating-sync/actions/workflows/ci.yml/badge.svg" /></a>
-  <a href="https://github.com/pejamas/rating-sync/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/pejamas/rating-sync/total" /></a>
-  <a href="https://github.com/pejamas/rating-sync/releases"><img alt="Latest tag" src="https://img.shields.io/github/v/tag/pejamas/rating-sync?sort=semver" /></a>
-  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/pejamas/rating-sync" /></a>
+  <a href="https://github.com/pejamas/rating-sync/releases"><img alt="下载量" src="https://img.shields.io/github/downloads/pejamas/rating-sync/total" /></a>
+  <a href="https://github.com/pejamas/rating-sync/releases"><img alt="最新版本" src="https://img.shields.io/github/v/tag/pejamas/rating-sync?sort=semver" /></a>
+  <a href="LICENSE"><img alt="许可证" src="https://img.shields.io/github/license/pejamas/rating-sync" /></a>
 </p>
 
-## Features
+## 功能
 
-- Update Movies, Series, and optionally Episodes
-- Prefer OMDb, MDBList, or both, with an optional IMDb official-dataset fallback
-- Pace each provider independently and enforce configurable daily API limits
-- Smart scanning prioritizes recent additions and avoids unnecessary repeat requests
-- Optional tiered rescanning checks newly released titles more often while their ratings settle
-- Run full-library or precisely targeted movie, series, season, or episode scans
-- Follow live results with stable ordering, expandable explanations, and before/after rating changes
-- Filter scan history, inspect detailed reports, copy results, or download report JSON
-- Find missing community or critic ratings and rescan an item directly
-- Retry provider failures sooner without treating them as unchanged ratings
-- Available from the Emby dashboard sidebar under Server
+- 更新电影、剧集，可选更新单集
+- 优先使用 OMDb、MDBList 或两者，可选启用 IMDb 官方数据集回退
+- 各数据源独立限速，并可配置每日 API 上限
+- 智能扫描优先处理最近添加的内容，避免不必要的重复请求
+- 可选分层重扫：新发布的作品在评分尚未稳定时更频繁地复查
+- 支持全库扫描，也可精确指定电影、剧集、季或单集
+- 实时结果保持稳定排序，可展开说明，并显示评分的前后变化
+- 可筛选扫描历史、查看详细报告、复制结果或下载 JSON 报告
+- 查找缺少社区评分或影评人评分的项目，并直接重扫单个项目
+- 数据源失败会更快重试，不再被当成「评分未变化」
+- 可在 Emby 后台侧边栏的「服务器」分类下找到
 
-## Install
+## 安装
 
-1. Download `RatingSync.dll` from the [latest release](https://github.com/pejamas/rating-sync/releases/latest).
-2. Copy it into your Emby plugins folder (often `...\Emby-Server\programdata\plugins\`).
-3. Restart Emby Server.
-4. Open Dashboard > Plugins > Rating Sync, or use Rating Sync in the sidebar.
+1. 从[最新发布](https://github.com/pejamas/rating-sync/releases/latest)下载 `RatingSync.dll`。
+2. 复制到 Emby 插件目录（通常是 `...\Emby-Server\programdata\plugins\`）。
+3. 重启 Emby 服务器。
+4. 打开 后台 → 插件 → 评分同步，或直接使用侧边栏中的「评分同步」。
 
-## Quick start
+## 快速开始
 
-1. Add an OMDb and/or MDBList API key, or enable IMDb ratings fallback on its own.
-2. Choose preferred source and which item types to update.
-3. Optionally enable IMDb ratings fallback when primary APIs return no community rating.
-4. Open the Run tab and start a refresh (full library or a targeted series / season / episode).
+1. 填写 OMDb 和/或 MDBList 的 API 密钥，或单独启用 IMDb 评分回退。
+2. 选择首选数据源，以及要更新哪些项目类型。
+3. 可选：当主要 API 未返回社区评分时启用 IMDb 评分回退。
+4. 打开「运行」页开始刷新（全库，或指定的剧集 / 季 / 单集）。
 
-## Rating sources
+## 评分数据源
 
-| Source | What it provides |
+| 数据源 | 提供内容 |
 | --- | --- |
-| OMDb | IMDb community ratings (and related metadata lookups) |
-| MDBList | Ratings including Rotten Tomatoes when available |
-| IMDb fallback | Official IMDb ratings datasets when APIs have no score |
+| OMDb | IMDb 社区评分（以及相关元数据查询） |
+| MDBList | 评分数据，可用时包含烂番茄 |
+| IMDb 回退 | API 查不到评分时，使用 IMDb 官方评分数据集 |
 
-Episodes use OMDb and/or the IMDb fallback (MDBList does not support episode lookups).
+单集使用 OMDb 和/或 IMDb 回退（MDBList 不支持单集查询）。
 
-## Screenshots
+## 截图
 
-### Settings
+### 设置
 
-API keys, sources, item types, and rate limits.
+API 密钥、数据源、项目类型与速率限制。
 
-<img src="docs/screenshots/settings.png" alt="Rating Sync settings" width="900" />
+<img src="docs/screenshots/settings.png" alt="评分同步设置" width="900" />
 
-### Smart scanning
+### 智能扫描
 
-Control how often items are rescanned and what to prioritize.
+控制重扫频率，以及优先处理哪些内容。
 
-<img src="docs/screenshots/smart-scanning.png" alt="Smart scanning" width="900" />
+<img src="docs/screenshots/smart-scanning.png" alt="智能扫描" width="900" />
 
-### Run
+### 运行
 
-Choose the scan scope, start a full or targeted refresh, and follow results as they complete.
+选择扫描范围，启动全库或指定刷新，并实时跟进完成情况。
 
-<img src="docs/screenshots/run.png" alt="Run rating refresh" width="900" />
+<img src="docs/screenshots/run.png" alt="运行评分刷新" width="900" />
 
-### Scan report
+### 扫描报告
 
-Search and filter updates, skips, and errors; expand explanations or download the full report as JSON.
+搜索和筛选已更新、已跳过与错误项；展开说明，或把完整报告下载为 JSON。
 
-<img src="docs/screenshots/scan-report.png" alt="Scan report" width="900" />
+<img src="docs/screenshots/scan-report.png" alt="扫描报告" width="900" />
 
-### History
+### 历史
 
-Filter previous scans by outcome and open any run for its detailed report.
+按结果筛选历史扫描，打开任意一次查看详细报告。
 
-<img src="docs/screenshots/history.png" alt="Scan history" width="900" />
+<img src="docs/screenshots/history.png" alt="扫描历史" width="900" />
 
-### Missing ratings
+### 缺失评分
 
-Find items missing community or critic ratings, then send a selected item directly to a targeted scan.
+查找缺少社区评分或影评人评分的项目，并把选中的项目直接送去定向扫描。
 
-<img src="docs/screenshots/missing-ratings.png" alt="Missing ratings search" width="900" />
+<img src="docs/screenshots/missing-ratings.png" alt="缺失评分搜索" width="900" />
 
-PNG files live in [`docs/screenshots/`](docs/screenshots/).
+PNG 文件位于 [`docs/screenshots/`](docs/screenshots/)。
 
-## Build
+## 构建
 
 ```powershell
 dotnet build -c Release
 ```
 
-Output: `bin\Release\RatingSync.dll`
+输出：`bin\Release\RatingSync.dll`
 
-### Local Emby assemblies (optional)
+### 使用本机 Emby 程序集（可选）
 
-If Emby is installed locally, build against its `System` folder:
+如果本机安装了 Emby，可针对它的 `System` 目录构建：
 
 ```powershell
 dotnet build -c Release -p:EmbyPath="C:\Program Files\Emby-Server\System"
 ```
 
-## Releases
+## 发布
 
-Pushing a tag such as `v1.2.3` builds Release, creates a GitHub Release, and uploads `RatingSync.dll` plus a zip.
+推送形如 `v1.2.2` 的标签，或修改 `RatingSync.csproj` 中的版本号，都会触发 Release 构建、创建 GitHub Release 并上传 `RatingSync.dll`。
 
-See [RELEASING.md](RELEASING.md).
+参见 [RELEASING.md](RELEASING.md)。
 
-## Versioning
+## 版本规范
 
-[Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
+[语义化版本](https://semver.org/lang/zh-CN/)：`MAJOR.MINOR.PATCH`
 
-- `PATCH`: bug fixes and small changes
-- `MINOR`: backwards-compatible features
-- `MAJOR`: breaking behavior, config, or API changes
+- `PATCH`：缺陷修复与小改动
+- `MINOR`：向后兼容的新功能
+- `MAJOR`：破坏性变更（行为、配置或 API）
