@@ -1,3 +1,7 @@
+## [1.2.3]
+
+- Describe this release before tagging.
+
 ## [1.2.2]
 
 - The plugin now targets .NET Standard 2.0, as required by the Emby plugin catalog (previously .NET Framework 4.6.2). No feature changes.
