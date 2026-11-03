@@ -33,8 +33,6 @@ jobs:
       publish: ${{ steps.ver.outputs.publish }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Compute version
         id: ver
@@ -42,8 +40,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $explicit = ("${{ github.ref_type }}" -eq "tag") -or ("${{ github.event_name }}" -eq "workflow_dispatch")
-
           if ("${{ github.ref_type }}" -eq "tag") {
             $tag = "${{ github.ref_name }}"
             $version = $tag.TrimStart('v')
@@ -65,41 +61,26 @@ jobs:
             $suffixOut = $Matches['s']
           }
 
-          # A plain push to main only releases when the version actually changed,
-          # so unrelated pushes never create a tag behind your back.
-          $versionChanged = $true
-          $before = "${{ github.event.before }}"
-          if (-not $explicit -and $before -match '^[0-9a-f]{40}$' -and $before -notmatch '^0{40}$') {
-            $previous = $null
-            $raw = git show "${before}:RatingSync.csproj" 2>$null
-            if ($LASTEXITCODE -eq 0 -and $raw) {
-              [xml]$oldCsproj = ($raw -join "`n")
-              $oldPrefix = @($oldCsproj.Project.PropertyGroup.VersionPrefix | Where-Object { $_ })[0]
-              $oldSuffix = @($oldCsproj.Project.PropertyGroup.VersionSuffix | Where-Object { $_ })[0]
-              $previous = if ([string]::IsNullOrWhiteSpace($oldSuffix)) { $oldPrefix } else { "$oldPrefix-$oldSuffix" }
-            }
-            if ($previous -and $previous -eq $version) {
-              Write-Host "Version unchanged ($version); skipping release."
-              $versionChanged = $false
-            }
+          # Release only what is missing, so plain pushes are cheap no-ops.
+          # `gh release view` exits 1 when the release does not exist; that is
+          # the expected "go ahead" signal, so clear the exit code afterwards.
+          # (The pwsh wrapper GitHub uses ends with `exit $LASTEXITCODE`.)
+          $publish = "true"
+          gh release view $tag --json tagName 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $tag already exists; nothing to do."
+            $publish = "false"
+          } else {
+            Write-Host "Release $tag does not exist yet; it will be built."
           }
-
-          $publish = "false"
-          if ($versionChanged) {
-            gh release view $tag --json tagName 2>$null | Out-Null
-            if ($LASTEXITCODE -eq 0) {
-              Write-Host "Release $tag already exists; nothing to do."
-            } else {
-              Write-Host "Release $tag does not exist yet; it will be built."
-              $publish = "true"
-            }
-          }
+          $LASTEXITCODE = 0
 
           "version=$version" >> $env:GITHUB_OUTPUT
           "prefix=$prefixOut" >> $env:GITHUB_OUTPUT
           "suffix=$suffixOut" >> $env:GITHUB_OUTPUT
           "tag=$tag" >> $env:GITHUB_OUTPUT
           "publish=$publish" >> $env:GITHUB_OUTPUT
+          $LASTEXITCODE = 0
 
   build-and-release:
     name: Build and publish

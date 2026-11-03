@@ -40,6 +40,8 @@ Prerelease tags (`vX.Y.Z-beta.1`) are published as GitHub prereleases.
 ## Notes
 
 - The workflow uses the tag name as the version. Use tags like `v1.2.3`.
-- A push to `main` that does not change the version runs only the cheap
-  `Resolve version` job and stops.
+- Pushes to `main` are cheap when nothing is left to do: the `Resolve version`
+  job reads the csproj, sees the release already exists, and stops. It only
+  builds when that version has no release yet, so a failed run is retried by
+  the next push.
 - `bin/` and `obj/` are ignored and should not be committed.
