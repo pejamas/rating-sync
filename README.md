@@ -117,7 +117,7 @@ dotnet build -c Release -p:EmbyPath="C:\Program Files\Emby-Server\System"
 
 ## Releases
 
-Pushing a tag such as `v1.2.3` builds Release, creates a GitHub Release, and uploads `RatingSync.dll` plus a zip.
+Pushing a tag such as `v1.2.2`, or bumping the version in `RatingSync.csproj`, builds Release, creates a GitHub Release, and uploads `RatingSync.dll`.
 
 See [RELEASING.md](RELEASING.md).
 
