@@ -35,6 +35,11 @@ namespace RatingSync
 
     public class RefreshProgress
     {
+        public string JobId { get; set; }
+        public List<string> UpdatedOrder { get; set; } = new List<string>();
+        public List<string> SkippedOrder { get; set; } = new List<string>();
+        public List<string> FailureOrder { get; set; } = new List<string>();
+        public Dictionary<string, List<RatingChange>> Changes { get; set; } = new Dictionary<string, List<RatingChange>>();
         public bool IsRunning { get; set; }
         public int TotalItems { get; set; }
         public int ProcessedItems { get; set; }
@@ -63,7 +68,7 @@ namespace RatingSync
         private static readonly Queue<DateTime> _recentItemTimes = new Queue<DateTime>();
         private const int EtaWindowSize = 40;
 
-        public static RefreshProgress GetProgress()
+        public static RefreshProgress GetProgress(bool includeDetails = true)
         {
             lock (_lock)
             {
@@ -88,6 +93,11 @@ namespace RatingSync
 
                 return new RefreshProgress
                 {
+                    JobId = _progress.JobId,
+                    UpdatedOrder = includeDetails ? new List<string>(_progress.UpdatedOrder) : new List<string>(),
+                    SkippedOrder = includeDetails ? new List<string>(_progress.SkippedOrder) : new List<string>(),
+                    FailureOrder = includeDetails ? new List<string>(_progress.FailureOrder) : new List<string>(),
+                    Changes = includeDetails ? _progress.Changes.ToDictionary(k => k.Key, v => new List<RatingChange>(v.Value)) : new Dictionary<string, List<RatingChange>>(),
                     IsRunning = _progress.IsRunning,
                     TotalItems = _progress.TotalItems,
                     ProcessedItems = _progress.ProcessedItems,
@@ -102,9 +112,9 @@ namespace RatingSync
                     StartTime = _progress.StartTime,
                     EndTime = _progress.EndTime,
                     EstimatedSecondsRemaining = eta,
-                    UpdatedDetails = new Dictionary<string, string>(_progress.UpdatedDetails),
-                    SkippedDetails = new Dictionary<string, string>(_progress.SkippedDetails),
-                    FailureDetails = new Dictionary<string, string>(_progress.FailureDetails)
+                    UpdatedDetails = includeDetails ? new Dictionary<string, string>(_progress.UpdatedDetails) : new Dictionary<string, string>(),
+                    SkippedDetails = includeDetails ? new Dictionary<string, string>(_progress.SkippedDetails) : new Dictionary<string, string>(),
+                    FailureDetails = includeDetails ? new Dictionary<string, string>(_progress.FailureDetails) : new Dictionary<string, string>()
                 };
             }
         }
@@ -161,7 +171,9 @@ namespace RatingSync
         {
             lock (_lock)
             {
-                _progress.UpdatedDetails[SafeKey(itemId, itemName)] = PackDetail(itemName, details);
+                var key = SafeKey(itemId, itemName);
+                if (!_progress.UpdatedDetails.ContainsKey(key)) _progress.UpdatedOrder.Add(key);
+                _progress.UpdatedDetails[key] = PackDetail(itemName, details);
             }
         }
 
@@ -169,7 +181,9 @@ namespace RatingSync
         {
             lock (_lock)
             {
-                _progress.SkippedDetails[SafeKey(itemId, itemName)] = PackDetail(itemName, reason);
+                var key = SafeKey(itemId, itemName);
+                if (!_progress.SkippedDetails.ContainsKey(key)) _progress.SkippedOrder.Add(key);
+                _progress.SkippedDetails[key] = PackDetail(itemName, reason);
             }
         }
 
@@ -177,7 +191,9 @@ namespace RatingSync
         {
             lock (_lock)
             {
-                _progress.FailureDetails[SafeKey(itemId, itemName)] = PackDetail(itemName, reason);
+                var key = SafeKey(itemId, itemName);
+                if (!_progress.FailureDetails.ContainsKey(key)) _progress.FailureOrder.Add(key);
+                _progress.FailureDetails[key] = PackDetail(itemName, reason);
             }
         }
 
@@ -187,6 +203,14 @@ namespace RatingSync
             {
                 _recentItemTimes.Clear();
                 _progress = new RefreshProgress();
+            }
+        }
+
+        public static void SetJobId(string id) { lock (_lock) { _progress.JobId = id; } }
+        public static void AddChange(string itemId, string rating, float? before, float after, string source) {
+            lock (_lock) {
+                if (!_progress.Changes.TryGetValue(itemId, out var changes)) _progress.Changes[itemId] = changes = new List<RatingChange>();
+                changes.Add(new RatingChange { Rating = rating, Before = before, After = after, Source = source });
             }
         }
 
@@ -280,12 +304,6 @@ namespace RatingSync
                 {
                     if (!_hasItems)
                         return false;
-                    if ((DateTime.UtcNow - _setAtUtc) > MaxQueueAge)
-                    {
-                        _selectedItems = new List<BaseItem>();
-                        _hasItems = false;
-                        return false;
-                    }
                     return true;
                 }
             }
@@ -297,33 +315,34 @@ namespace RatingSync
     #region API Service
 
     [Route("/RatingSync/Progress", "GET", Summary = "Gets the current progress of the rating refresh task")]
-    [Authenticated]
+    [Authenticated(Roles = "Admin")]
     public class GetProgressRequest : IReturn<RefreshProgress>
     {
+        public bool SummaryOnly { get; set; }
     }
 
     [Route("/RatingSync/ClearProgress", "POST", Summary = "Clears the progress data")]
-    [Authenticated]
+    [Authenticated(Roles = "Admin")]
     public class ClearProgressRequest : IReturnVoid
     {
     }
 
     [Route("/RatingSync/History", "GET", Summary = "Gets scan history sessions")]
-    [Authenticated]
+    [Authenticated(Roles = "Admin")]
     public class GetHistoryRequest : IReturn<List<ScanSession>>
     {
         public int Count { get; set; }
     }
 
     [Route("/RatingSync/HistoryReport", "GET", Summary = "Gets a detailed scan report for a session")]
-    [Authenticated]
+    [Authenticated(Roles = "Admin")]
     public class GetHistoryReportRequest : IReturn<ScanSessionReport>
     {
         public string SessionId { get; set; }
     }
 
     [Route("/RatingSync/ApiCounters", "GET", Summary = "Gets today's API usage counters")]
-    [Authenticated]
+    [Authenticated(Roles = "Admin")]
     public class GetApiCountersRequest : IReturn<ApiCountersResponse>
     {
     }
@@ -357,7 +376,7 @@ namespace RatingSync
     }
 
     [Route("/RatingSync/DeleteScan", "POST", Summary = "Deletes a scan session and its report")]
-    [Authenticated]
+    [Authenticated(Roles = "Admin")]
     public class DeleteScanRequest : IReturn<DeleteScanResponse>
     {
         public string SessionId { get; set; }
@@ -376,14 +395,14 @@ namespace RatingSync
     }
 
     [Route("/RatingSync/MissingData", "GET", Summary = "Gets items with missing IMDb or rating data")]
-    [Authenticated]
+    [Authenticated(Roles = "Admin")]
     public class GetMissingDataRequest : IReturn<List<MissingDataItem>>
     {
         public string Type { get; set; } // "movies", "series", "episodes", or empty for all
     }
 
     [Route("/RatingSync/ItemHistory", "GET", Summary = "Gets scan history for specific items")]
-    [Authenticated]
+    [Authenticated(Roles = "Admin")]
     public class GetItemHistoryRequest : IReturn<List<ItemHistoryEntry>>
     {
         public string Search { get; set; }
@@ -391,35 +410,35 @@ namespace RatingSync
     }
 
     [Route("/RatingSync/Libraries", "GET", Summary = "Gets available libraries")]
-    [Authenticated]
+    [Authenticated(Roles = "Admin")]
     public class GetLibrariesRequest : IReturn<List<LibraryInfo>>
     {
     }
 
     [Route("/RatingSync/Series", "GET", Summary = "Gets TV series in a library")]
-    [Authenticated]
+    [Authenticated(Roles = "Admin")]
     public class GetSeriesRequest : IReturn<List<SeriesInfo>>
     {
         public string LibraryId { get; set; }
     }
 
     [Route("/RatingSync/Seasons", "GET", Summary = "Gets seasons for a series")]
-    [Authenticated]
+    [Authenticated(Roles = "Admin")]
     public class GetSeasonsRequest : IReturn<List<SeasonInfo>>
     {
         public string SeriesId { get; set; }
     }
 
     [Route("/RatingSync/Episodes", "GET", Summary = "Gets episodes for a season")]
-    [Authenticated]
+    [Authenticated(Roles = "Admin")]
     public class GetEpisodesRequest : IReturn<List<EpisodeInfoDto>>
     {
         public string SeasonId { get; set; }
     }
 
     [Route("/RatingSync/RunSelected", "POST", Summary = "Runs refresh on selected items")]
-    [Authenticated]
-    public class RunSelectedRequest : IReturnVoid
+    [Authenticated(Roles = "Admin")]
+    public class RunSelectedRequest
     {
         public string LibraryId { get; set; }
         public string SeriesId { get; set; }
@@ -433,7 +452,7 @@ namespace RatingSync
     }
 
     [Route("/RatingSync/Movies", "GET", Summary = "Gets movies in a library")]
-    [Authenticated]
+    [Authenticated(Roles = "Admin")]
     public class GetMoviesRequest : IReturn<List<MovieInfo>>
     {
         public string LibraryId { get; set; }
@@ -514,10 +533,15 @@ namespace RatingSync
     public class ProgressApiService : IService
     {
         private ILibraryManager _libraryManager;
+        private readonly ITaskManager _taskManager;
+        internal static readonly object StartGate = new object();
+        internal static string PendingJobId;
+        internal Func<PluginConfiguration> ReadConfiguration = () => Plugin.Instance.Configuration;
 
-        public ProgressApiService(ILibraryManager libraryManager)
+        public ProgressApiService(ILibraryManager libraryManager, ITaskManager taskManager)
         {
             _libraryManager = libraryManager;
+            _taskManager = taskManager;
         }
 
         private string TryGetSeasonName(Episode episode)
@@ -560,7 +584,7 @@ namespace RatingSync
 
         public object Get(GetProgressRequest request)
         {
-            return ProgressTracker.GetProgress();
+            return ProgressTracker.GetProgress(!request.SummaryOnly);
         }
 
         public object Get(GetHistoryRequest request)
@@ -911,7 +935,39 @@ namespace RatingSync
 
         public void Post(RunSelectedRequest request)
         {
-            var config = Plugin.Instance.Configuration;
+            lock (StartGate) {
+                EnsureIdle();
+                QueueSelection(request);
+            }
+        }
+
+        private void EnsureIdle() {
+            var worker = _taskManager.ScheduledTasks.FirstOrDefault(t => t.ScheduledTask.Key == "RatingSync");
+            if (worker == null) throw new InvalidOperationException("Rating Sync task is unavailable.");
+            if (worker.State != TaskState.Idle || PendingJobId != null || SelectedItemsStore.HasItems)
+                throw new InvalidOperationException("A rating scan is already running or queued.");
+        }
+
+        public object Post(StartScanRequest request) {
+            lock (StartGate) {
+                EnsureIdle();
+                if (request.FullLibrary && new[] { request.MovieId, request.EpisodeId, request.SeasonId, request.SeriesId, request.LibraryId }.Any(v => !string.IsNullOrEmpty(v)))
+                    throw new ArgumentException("Choose either a target or the full library.");
+                if (!request.FullLibrary) QueueSelection(request);
+                var worker = _taskManager.ScheduledTasks.First(t => t.ScheduledTask.Key == "RatingSync");
+                var jobId = Guid.NewGuid().ToString("N");
+                PendingJobId = jobId;
+                ProgressTracker.Start(0, 0, "Queued");
+                ProgressTracker.SetJobId(jobId);
+                try { _taskManager.QueueScheduledTask<RatingRefreshTask>(); }
+                catch { PendingJobId = null; SelectedItemsStore.GetAndClearItems(); ProgressTracker.Stop(true); throw; }
+                return new StartScanResponse { JobId = jobId, TaskId = worker.Id, State = "Queued" };
+            }
+        }
+
+        private void QueueSelection(RunSelectedRequest request)
+        {
+            var config = ReadConfiguration();
             var includeEpisodes = config.UpdateEpisodes;
             var items = new List<BaseItem>();
 
@@ -1017,6 +1073,8 @@ namespace RatingSync
             // Drop specials
             items = items.Where(i => !(i is Episode ep && (ep.ParentIndexNumber ?? 0) == 0)).ToList();
             
+            items = items.GroupBy(i => i.InternalId).Select(g => g.First()).ToList();
+            if (items.Count == 0) throw new ArgumentException("No eligible items in this selection.");
             if (items.Count > 0)
             {
                 // Store selected items for the task to pick up
@@ -1034,7 +1092,7 @@ namespace RatingSync
 
         public void Post(ClearProgressRequest request)
         {
-            ProgressTracker.ClearProgress();
+            lock (StartGate) { EnsureIdle(); ProgressTracker.ClearProgress(); }
         }
     }
 
@@ -1055,7 +1113,7 @@ namespace RatingSync
 
         public override string Name => Strings.T("plugin.name");
 
-        public override Guid Id => new Guid("12345678-1234-1234-1234-123456789012");
+        public override Guid Id => new Guid("1770753c-43e9-4454-9782-2c3b44ac06ce");
 
         public override string Description => Strings.T("plugin.description");
 
@@ -1063,10 +1121,10 @@ namespace RatingSync
 
         public Stream GetThumbImage()
         {
-            return GetType().Assembly.GetManifestResourceStream(GetType().Namespace + ".images.logo.jpg");
+            return GetType().Assembly.GetManifestResourceStream(GetType().Namespace + ".images.logo.png");
         }
 
-        public ImageFormat ThumbImageFormat => ImageFormat.Jpg;
+        public ImageFormat ThumbImageFormat => ImageFormat.Png;
 
         public IEnumerable<PluginPageInfo> GetPages()
         {
@@ -1126,7 +1184,13 @@ namespace RatingSync
         public bool PrioritizeRecentlyAdded { get; set; }
         public int RecentlyAddedDays { get; set; }
         public bool SkipUnratedOnly { get; set; }
-        
+
+        // Tiered rescanning: recently released items use a shorter interval while ratings settle
+        public bool TieredRescanEnabled { get; set; }
+        public int RecentReleaseDays { get; set; }
+        public int RecentRescanIntervalDays { get; set; }
+        public int RecentMaxRescans { get; set; } // 0 = no cap
+
         // Testing
         public bool TestMode { get; set; }
 
@@ -1148,6 +1212,10 @@ namespace RatingSync
             PrioritizeRecentlyAdded = true;
             RecentlyAddedDays = 7;
             SkipUnratedOnly = false;
+            TieredRescanEnabled = false;
+            RecentReleaseDays = 30;
+            RecentRescanIntervalDays = 3;
+            RecentMaxRescans = 0;
             TestMode = false;
         }
     }
@@ -1167,6 +1235,8 @@ namespace RatingSync
     public class ScanHistoryEntry
     {
         [DataMember]
+        public DateTime? LastFailed { get; set; }
+        [DataMember]
         public DateTime LastScanned { get; set; }
         [DataMember]
         public float? LastRating { get; set; }
@@ -1174,11 +1244,39 @@ namespace RatingSync
         public float? LastCriticRating { get; set; }
         [DataMember]
         public string LastChange { get; set; }
+        [DataMember]
+        public int RecentRescanCount { get; set; }
+    }
+
+    /// <summary>
+    /// Chooses the rescan interval for an item. Recently released items use the shorter
+    /// "recent" interval until they age out or reach the optional rescan cap.
+    /// </summary>
+    public static class TieredRescan
+    {
+        public static bool IsRecentTier(PluginConfiguration config, DateTimeOffset? premiereDate, ScanHistoryEntry entry, DateTime utcNow)
+        {
+            if (!config.TieredRescanEnabled || !premiereDate.HasValue)
+                return false;
+            var release = premiereDate.Value.UtcDateTime;
+            if (release > utcNow || release < utcNow.AddDays(-Math.Max(1, config.RecentReleaseDays)))
+                return false;
+            return config.RecentMaxRescans <= 0 || (entry?.RecentRescanCount ?? 0) < config.RecentMaxRescans;
+        }
+
+        public static int GetIntervalDays(PluginConfiguration config, DateTimeOffset? premiereDate, ScanHistoryEntry entry, DateTime utcNow)
+        {
+            return IsRecentTier(config, premiereDate, entry, utcNow)
+                ? Math.Max(1, config.RecentRescanIntervalDays)
+                : config.RescanIntervalDays;
+        }
     }
 
     [DataContract]
     public class ScanSession
     {
+        [DataMember]
+        public string Scope { get; set; }
         [DataMember]
         public string SessionId { get; set; }
         [DataMember]
@@ -1219,6 +1317,8 @@ namespace RatingSync
     [DataContract]
     public class ScanReportEntry
     {
+        [DataMember]
+        public List<RatingChange> Changes { get; set; }
         [DataMember]
         public string Name { get; set; }
         [DataMember]
@@ -1347,7 +1447,7 @@ namespace RatingSync
 
         private static string GetReportPath(string sessionId)
         {
-            if (string.IsNullOrWhiteSpace(_reportsDir) || string.IsNullOrWhiteSpace(sessionId))
+            if (string.IsNullOrWhiteSpace(_reportsDir) || !Guid.TryParseExact(sessionId, "N", out _))
                 return null;
             return Path.Combine(_reportsDir, sessionId + ".json");
         }
@@ -1400,12 +1500,9 @@ namespace RatingSync
                 try
                 {
                     var serializer = new DataContractJsonSerializer(typeof(ScanHistory));
-                    using (var stream = File.Create(_historyPath))
-                    {
-                        serializer.WriteObject(stream, _history);
-                    }
+                    AtomicStorage.Write(_historyPath, stream => serializer.WriteObject(stream, _history));
                 }
-                catch { }
+                catch (Exception ex) { System.Diagnostics.Trace.TraceError("Rating Sync history save failed: " + ex.Message); }
             }
         }
 
@@ -1555,7 +1652,7 @@ namespace RatingSync
                 OmdbRequests = session.OmdbRequests,
                 MdbListRequests = session.MdbListRequests,
                 ImdbScrapeRequests = session.ImdbScrapeRequests,
-                Updated = ToReportEntries(updatedDetails),
+                Updated = ToReportEntries(updatedDetails, ProgressTracker.GetProgress().Changes),
                 Skipped = ToReportEntries(skippedDetails),
                 Errors = ToReportEntries(failureDetails),
             };
@@ -1565,16 +1662,13 @@ namespace RatingSync
                 try
                 {
                     var serializer = new DataContractJsonSerializer(typeof(ScanSessionReport));
-                    using (var stream = File.Create(path))
-                    {
-                        serializer.WriteObject(stream, report);
-                    }
+                    AtomicStorage.Write(path, stream => serializer.WriteObject(stream, report));
                 }
                 catch { }
             }
         }
 
-        private static List<ScanReportEntry> ToReportEntries(Dictionary<string, string> details)
+        private static List<ScanReportEntry> ToReportEntries(Dictionary<string, string> details, Dictionary<string, List<RatingChange>> changes = null)
         {
             var list = new List<ScanReportEntry>();
             if (details == null)
@@ -1584,7 +1678,7 @@ namespace RatingSync
                 ProgressTracker.UnpackDetail(kvp.Value, out var name, out var detail);
                 if (string.IsNullOrWhiteSpace(name))
                     name = kvp.Key;
-                list.Add(new ScanReportEntry { Name = name, Detail = detail });
+                list.Add(new ScanReportEntry { Name = name, Detail = detail, Changes = changes != null && changes.TryGetValue(kvp.Key, out var itemChanges) ? itemChanges : null });
             }
             return list;
         }
@@ -1644,16 +1738,25 @@ namespace RatingSync
             }
         }
 
-        public static void UpdateItemEntry(string itemId, float? rating, float? criticRating, string change)
+        public static void MarkFailed(string itemId) {
+            lock (_lock) {
+                if (!_history.Items.TryGetValue(itemId, out var entry)) _history.Items[itemId] = entry = new ScanHistoryEntry();
+                entry.LastFailed = DateTime.UtcNow;
+            }
+        }
+
+        public static void UpdateItemEntry(string itemId, float? rating, float? criticRating, string change, bool recentTier = false)
         {
             lock (_lock)
             {
+                var previousCount = _history.Items.TryGetValue(itemId, out var previous) ? previous.RecentRescanCount : 0;
                 _history.Items[itemId] = new ScanHistoryEntry
                 {
                     LastScanned = DateTime.UtcNow,
                     LastRating = rating,
                     LastCriticRating = criticRating,
-                    LastChange = change
+                    LastChange = change,
+                    RecentRescanCount = recentTier ? previousCount + 1 : previousCount
                 };
             }
         }
@@ -1749,22 +1852,22 @@ namespace RatingSync
             }
         }
 
-        public static async Task EnsureRatingsReadyAsync(ILogger logger = null)
+        public static async Task EnsureRatingsReadyAsync(ILogger logger = null, CancellationToken token = default(CancellationToken))
         {
             await EnsureFileAsync(
                 "https://datasets.imdbws.com/title.ratings.tsv.gz",
                 RatingsTsvPath,
                 "IMDb ratings dataset",
-                logger).ConfigureAwait(false);
+                logger, token).ConfigureAwait(false);
         }
 
-        public static async Task EnsureEpisodesReadyAsync(ILogger logger = null)
+        public static async Task EnsureEpisodesReadyAsync(ILogger logger = null, CancellationToken token = default(CancellationToken))
         {
             await EnsureFileAsync(
                 "https://datasets.imdbws.com/title.episode.tsv.gz",
                 EpisodesTsvPath,
                 "IMDb episode index dataset",
-                logger).ConfigureAwait(false);
+                logger, token).ConfigureAwait(false);
         }
 
         public static float? TryGetRating(string imdbId)
@@ -1795,152 +1898,45 @@ namespace RatingSync
             string seriesImdbId,
             int seasonNumber,
             int episodeNumber,
-            ILogger logger = null)
+            ILogger logger = null, CancellationToken token = default(CancellationToken))
         {
             seriesImdbId = NormalizeTconst(seriesImdbId);
             if (string.IsNullOrWhiteSpace(seriesImdbId) || seasonNumber <= 0 || episodeNumber <= 0)
                 return null;
 
-            var cacheKey = seriesImdbId + "|S" + seasonNumber;
-            lock (EpisodeScanSync)
-            {
-                if (EpisodeMaps.TryGetValue(cacheKey, out var cached)
-                    && cached != null
-                    && cached.TryGetValue(episodeNumber, out var hit)
-                    && !string.IsNullOrWhiteSpace(hit))
-                {
-                    return hit;
-                }
-            }
-
-            await EnsureEpisodesReadyAsync(logger).ConfigureAwait(false);
-            if (!File.Exists(EpisodesTsvPath))
-                return null;
-
-            try
-            {
-                // One pass: cache every season for this parent series.
-                var bySeason = new Dictionary<int, Dictionary<int, string>>();
-                using (var reader = new StreamReader(EpisodesTsvPath, Encoding.UTF8))
-                {
-                    string line;
-                    var headerSkipped = false;
-                    while ((line = reader.ReadLine()) != null)
-                    {
-                        if (!headerSkipped)
-                        {
-                            headerSkipped = true;
-                            continue;
-                        }
-                        // tconst \t parentTconst \t seasonNumber \t episodeNumber
-                        var parts = line.Split('\t');
-                        if (parts.Length < 4)
-                            continue;
-                        if (!string.Equals(parts[1], seriesImdbId, StringComparison.OrdinalIgnoreCase))
-                            continue;
-                        if (!int.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out var season))
-                            continue;
-                        if (!int.TryParse(parts[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out var epNum))
-                            continue;
-                        if (season <= 0 || epNum <= 0 || string.IsNullOrWhiteSpace(parts[0]))
-                            continue;
-                        if (!bySeason.TryGetValue(season, out var map))
-                        {
-                            map = new Dictionary<int, string>();
-                            bySeason[season] = map;
-                        }
-                        map[epNum] = parts[0];
-                    }
-                }
-
-                lock (EpisodeScanSync)
-                {
-                    if (EpisodeMaps.Count > 500)
-                        EpisodeMaps.Clear();
-                    foreach (var kv in bySeason)
-                        EpisodeMaps[seriesImdbId + "|S" + kv.Key] = kv.Value;
-
-                    if (EpisodeMaps.TryGetValue(cacheKey, out var seasonMap)
-                        && seasonMap.TryGetValue(episodeNumber, out var found))
-                        return found;
-                }
-            }
-            catch (Exception ex)
-            {
-                logger?.Info("IMDb episode dataset lookup failed: " + ex.Message);
-            }
-
-            return null;
+            await EnsureEpisodesReadyAsync(logger, token).ConfigureAwait(false);
+            if (!File.Exists(EpisodesTsvPath)) return null;
+            return await EpisodeIndex.Find(EpisodesTsvPath, seriesImdbId, seasonNumber, episodeNumber, token).ConfigureAwait(false);
         }
 
-        private static async Task EnsureFileAsync(string url, string tsvPath, string label, ILogger logger)
+        private static readonly SemaphoreSlim DownloadGate = new SemaphoreSlim(1, 1);
+        private static readonly Dictionary<string, DateTime> RetryAfter = new Dictionary<string, DateTime>();
+        private static async Task EnsureFileAsync(string url, string tsvPath, string label, ILogger logger, CancellationToken token)
         {
-            if (string.IsNullOrWhiteSpace(_dir))
-                return;
-
-            lock (Sync)
-            {
-                if (File.Exists(tsvPath))
-                {
-                    var age = DateTime.UtcNow - File.GetLastWriteTimeUtc(tsvPath);
-                    if (age < MaxAge && new FileInfo(tsvPath).Length > 1024)
-                        return;
-                }
-            }
-
-            // Serialize downloads so concurrent scan items don't stampede.
-            await Task.Run(() =>
-            {
-                lock (Sync)
-                {
-                    if (File.Exists(tsvPath))
-                    {
-                        var age = DateTime.UtcNow - File.GetLastWriteTimeUtc(tsvPath);
-                        if (age < MaxAge && new FileInfo(tsvPath).Length > 1024)
-                            return;
-                    }
-
-                    try
-                    {
-                        Directory.CreateDirectory(_dir);
-                        var gzPath = tsvPath + ".gz.tmp";
-                        var tmpTsv = tsvPath + ".tmp";
-                        logger?.Info("Downloading " + label + "...");
-                        try { ProgressTracker.SetMessage("Downloading " + label + "..."); } catch { }
-
-                        using (var client = CreateHttpClient(TimeSpan.FromMinutes(5)))
-                        using (var response = client.GetAsync(url).GetAwaiter().GetResult())
-                        {
-                            response.EnsureSuccessStatusCode();
-                            using (var remote = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult())
-                            using (var file = File.Create(gzPath))
-                            {
-                                remote.CopyTo(file);
-                            }
+            if (string.IsNullOrWhiteSpace(_dir)) return;
+            await DownloadGate.WaitAsync(token).ConfigureAwait(false);
+            try {
+                if (RetryAfter.TryGetValue(tsvPath, out var retryAt) && retryAt > DateTime.UtcNow) return;
+                if (File.Exists(tsvPath) && DateTime.UtcNow - File.GetLastWriteTimeUtc(tsvPath) < MaxAge && new FileInfo(tsvPath).Length > 1024) return;
+                var temp = tsvPath + ".tmp";
+                try {
+                    Directory.CreateDirectory(_dir);
+                    ProgressTracker.SetMessage("Preparing " + label);
+                    using (var client = CreateHttpClient(TimeSpan.FromMinutes(5)))
+                    using (var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false)) {
+                        response.EnsureSuccessStatusCode();
+                        using (var remote = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
+                        using (var gzip = new GZipStream(remote, CompressionMode.Decompress))
+                        using (var output = File.Create(temp)) {
+                            await gzip.CopyToAsync(output, 81920, token).ConfigureAwait(false);
                         }
-
-                        using (var input = File.OpenRead(gzPath))
-                        using (var gzip = new GZipStream(input, CompressionMode.Decompress))
-                        using (var output = File.Create(tmpTsv))
-                        {
-                            gzip.CopyTo(output);
-                        }
-
-                        try { File.Delete(gzPath); } catch { }
-
-                        if (File.Exists(tsvPath))
-                        {
-                            try { File.Delete(tsvPath); } catch { }
-                        }
-                        File.Move(tmpTsv, tsvPath);
-                        logger?.Info(label + " ready (" + new FileInfo(tsvPath).Length + " bytes).");
                     }
-                    catch (Exception ex)
-                    {
-                        logger?.Info("Failed to refresh " + label + ": " + ex.Message);
-                    }
-                }
-            }).ConfigureAwait(false);
+                    if (File.Exists(tsvPath)) File.Replace(temp, tsvPath, null);
+                    else File.Move(temp, tsvPath);
+                } catch (OperationCanceledException) { throw; }
+                catch (Exception ex) { RetryAfter[tsvPath] = DateTime.UtcNow.AddMinutes(15); logger?.Warn("Could not refresh " + label + ": " + ex.Message); }
+                finally { if (File.Exists(temp)) File.Delete(temp); }
+            } finally { DownloadGate.Release(); }
         }
 
         private static float? BinarySearchRating(string path, string tconst)
@@ -2094,6 +2090,9 @@ namespace RatingSync
         private readonly ILibraryManager _libraryManager;
         private readonly ILogger _logger;
         private readonly IJsonSerializer _jsonSerializer;
+        private CancellationToken _scanToken;
+        private bool _isMovie;
+        private string _jobId;
 
         private static readonly object _imdbEpisodeCacheLock = new object();
         private static readonly Dictionary<string, Dictionary<int, string>> _imdbEpisodeIdCache = new Dictionary<string, Dictionary<int, string>>();
@@ -2152,6 +2151,18 @@ namespace RatingSync
 
         public async Task Execute(CancellationToken cancellationToken, IProgress<double> progress)
         {
+            _scanToken = cancellationToken;
+            string jobId;
+            bool isSelectedScan;
+            List<BaseItem> selectedItems;
+            lock (ProgressApiService.StartGate) {
+                jobId = ProgressApiService.PendingJobId ?? Guid.NewGuid().ToString("N");
+                ProgressApiService.PendingJobId = null;
+                isSelectedScan = SelectedItemsStore.HasItems;
+                selectedItems = isSelectedScan ? SelectedItemsStore.GetAndClearItems() : null;
+            }
+            _jobId = jobId;
+            lock (_imdbEpisodeCacheLock) { _imdbEpisodeIdCache.Clear(); }
             Log("Starting rating refresh task...", "info");
 
             var config = Plugin.Instance.Configuration;
@@ -2199,17 +2210,17 @@ namespace RatingSync
             int mdblistCalls = 0;
             int imdbScrapeCalls = 0;
             int smartSkipped = 0;
+            var lastHistorySave = DateTime.UtcNow;
             bool wasCancelled = false;
 
             try
             {
                 List<BaseItem> items;
-                bool isSelectedScan = SelectedItemsStore.HasItems;
                 
                 if (isSelectedScan)
                 {
                     // Use pre-selected items
-                    items = SelectedItemsStore.GetAndClearItems();
+                    items = selectedItems;
                     if (items == null || items.Count == 0)
                     {
                         AbortBeforeScan("Selected scan queue was empty or expired. Try Start again.");
@@ -2270,8 +2281,8 @@ namespace RatingSync
 
                     // Apply smart scanning filters (only for full scans, not selected items)
                     var originalCount = items.Count;
-                    var rescanCutoff = DateTime.UtcNow.AddDays(-config.RescanIntervalDays);
-                    var recentlyAddedCutoff = DateTime.UtcNow.AddDays(-config.RecentlyAddedDays);
+                    var now = DateTime.UtcNow;
+                    var recentlyAddedCutoff = now.AddDays(-config.RecentlyAddedDays);
                     int skippedByHistory = 0;
                     int skippedHasRating = 0;
 
@@ -2279,16 +2290,19 @@ namespace RatingSync
                     {
                         var itemId = i.InternalId.ToString();
                         var historyEntry = ScanHistoryManager.GetEntry(itemId);
-                        
-                        // Skip if scanned recently (within rescan interval)
-                        if (historyEntry != null && historyEntry.LastScanned > rescanCutoff)
+                        var rescanCutoff = now.AddDays(-TieredRescan.GetIntervalDays(config, i.PremiereDate, historyEntry, now));
+
+                        // Skip if scanned recently (within this item's rescan interval)
+                        if (historyEntry != null && (historyEntry.LastFailed.HasValue
+                            ? historyEntry.LastFailed.Value > now.AddMinutes(-15)
+                            : historyEntry.LastScanned > rescanCutoff))
                         {
                             skippedByHistory++;
                             return false;
                         }
                         
                         // Optionally skip items that already have ratings
-                        if (config.SkipUnratedOnly && i.CommunityRating.HasValue)
+                        if (config.SkipUnratedOnly && i.CommunityRating.HasValue && (!config.UpdateCriticRating || i is Episode || i.CriticRating.HasValue))
                         {
                             skippedHasRating++;
                             return false;
@@ -2303,6 +2317,11 @@ namespace RatingSync
                         Log($"Smart scan: Skipped {skippedByHistory} recently scanned, {skippedHasRating} already rated", "info");
                     }
                     Log($"Items to process after filtering: {items.Count} (of {originalCount} total)", "info");
+                    if (config.TieredRescanEnabled)
+                    {
+                        var recentTierCount = items.Count(i => TieredRescan.IsRecentTier(config, i.PremiereDate, ScanHistoryManager.GetEntry(i.InternalId.ToString()), now));
+                        Log($"Tiered rescan: {recentTierCount} item(s) released in the last {config.RecentReleaseDays} days use the {config.RecentRescanIntervalDays}-day interval", "info");
+                    }
 
                     // Prioritize recently added content
                     if (config.PrioritizeRecentlyAdded)
@@ -2340,13 +2359,9 @@ namespace RatingSync
                     ? $"Smart-skipped {smartSkipped} item(s) before scan"
                     : (isSelectedScan ? "Targeted scan (smart-scan filters bypassed)" : null);
                 ProgressTracker.Start(items.Count, smartSkipped, statusMsg);
+                ProgressTracker.SetJobId(jobId);
                 scanSession = ScanHistoryManager.StartSession(items.Count);
-
-                if (config.EnableImdbScraping)
-                {
-                    ProgressTracker.SetMessage("Preparing IMDb ratings dataset...");
-                    await ImdbDatasetStore.EnsureRatingsReadyAsync(_logger).ConfigureAwait(false);
-                }
+                scanSession.Scope = !isSelectedScan ? "Entire library" : items.Count == 1 ? items[0].Name : "Selected items (" + items.Count + ")";
 
                 foreach (var item in items)
                 {
@@ -2358,8 +2373,8 @@ namespace RatingSync
                     }
 
                     // Re-check API limits dynamically
-                    var currentOmdbLimitReached = config.OmdbRateLimitEnabled && (omdbRequests + omdbCalls) >= config.OmdbDailyLimit;
-                    var currentMdbListLimitReached = config.MdbListRateLimitEnabled && (mdblistRequests + mdblistCalls) >= config.MdbListDailyLimit;
+                    var currentOmdbLimitReached = config.OmdbRateLimitEnabled && ScanHistoryManager.GetTodayRequestCount("omdb") >= config.OmdbDailyLimit;
+                    var currentMdbListLimitReached = config.MdbListRateLimitEnabled && ScanHistoryManager.GetTodayRequestCount("mdblist") >= config.MdbListDailyLimit;
                     var currentHasOmdb = !string.IsNullOrEmpty(config.OmdbApiKey) && !currentOmdbLimitReached;
                     var currentHasMdbList = !string.IsNullOrEmpty(config.MdbListApiKey) && !currentMdbListLimitReached;
                     
@@ -2400,7 +2415,7 @@ namespace RatingSync
                             skipped++;
                             processed++;
                             ProgressTracker.AddSkipped(itemId, item.Name, "Skipped episode, missing season or episode index in library metadata");
-                            Log($"⊘ Skipped '{item.Name}' — missing season/episode index", "skip");
+                            Log($"Skipped '{item.Name}' — missing season/episode index", "skip");
                             ProgressTracker.UpdateProgress(processed, updated, skipped, errors, itemName);
                             continue;
                         }
@@ -2415,18 +2430,19 @@ namespace RatingSync
                             : (episodeInfo != null ? episodeInfo.SeriesImdbId : "");
                         Log($"Processing: {itemName} ({logImdbId})", "info");
                         
+                        _isMovie = item is Movie;
                         var ratings = await FetchRatings(imdbId, config, episodeInfo, currentHasOmdb, currentHasMdbList);
                         
                         // Track real HTTP attempts (not empty/failed-as-used)
                         if (ratings.QueriedOmdb)
                         {
                             omdbCalls += Math.Max(1, ratings.OmdbHttpCalls);
-                            ScanHistoryManager.IncrementRequestCount("omdb", Math.Max(1, ratings.OmdbHttpCalls));
+
                         }
                         if (ratings.QueriedMdbList)
                         {
                             mdblistCalls += Math.Max(1, ratings.MdbListHttpCalls);
-                            ScanHistoryManager.IncrementRequestCount("mdblist", Math.Max(1, ratings.MdbListHttpCalls));
+
                         }
                         if (ratings.ImdbScrapeAttempted)
                         {
@@ -2452,6 +2468,7 @@ namespace RatingSync
                             sourceLabel = "API";
 
                         bool itemUpdated = false;
+                        var ratingChanges = new List<RatingChange>();
                         var changes = new List<string>();
                         const float ImdbEpsilon = 0.05f;
                         const float RtEpsilon = 0.5f;
@@ -2463,6 +2480,7 @@ namespace RatingSync
                                 || Math.Abs(oldRating.Value - ratings.CommunityRating.Value) >= ImdbEpsilon;
                             if (changed)
                             {
+                                ratingChanges.Add(new RatingChange { Rating = "IMDb", Before = oldRating, After = ratings.CommunityRating.Value, Source = ratings.CommunitySource ?? sourceLabel });
                                 item.CommunityRating = ratings.CommunityRating.Value;
                                 itemUpdated = true;
                                 changes.Add($"IMDb community {(oldRating.HasValue ? oldRating.Value.ToString("F1") : "none")} → {ratings.CommunityRating.Value:F1} ({sourceLabel})");
@@ -2478,24 +2496,25 @@ namespace RatingSync
                             {
                                 item.CriticRating = ratings.CriticRating.Value;
                                 itemUpdated = true;
-                                var rtSource = ratings.UsedMdbList ? "MDBList" : sourceLabel;
+                                var rtSource = ratings.CriticSource ?? sourceLabel;
+                                ratingChanges.Add(new RatingChange { Rating = "RT critic", Before = oldCriticRating, After = ratings.CriticRating.Value, Source = rtSource });
                                 changes.Add($"RT critic {(oldCriticRating.HasValue ? oldCriticRating.Value.ToString("F0") + "%" : "none")} → {ratings.CriticRating.Value:F0}% ({rtSource})");
                             }
                         }
 
                         // Record in scan history with detailed info
                         var changeDetails = string.Join(", ", changes);
-                        ScanHistoryManager.UpdateItemEntry(itemId, item.CommunityRating, item.CriticRating, itemUpdated ? changeDetails : null);
 
                         if (itemUpdated)
                         {
                             _libraryManager.UpdateItem(item, item.GetParent(), ItemUpdateType.MetadataEdit);
+                            foreach (var change in ratingChanges) ProgressTracker.AddChange(itemId, change.Rating, change.Before, change.After, change.Source);
                             updated++;
                             updatedNames.Add(itemName);
                             ProgressTracker.AddUpdated(itemId, itemName, changeDetails);
-                            Log($"✓ Updated '{itemName}': {changeDetails}", "success");
+                            Log($"Updated '{itemName}': {changeDetails}", "success");
                         }
-                        else
+                        else if (ratings.Failures.Count == 0)
                         {
                             skipped++;
                             var skipReason = BuildSkippedItemSummary(
@@ -2507,31 +2526,36 @@ namespace RatingSync
                                 item.CommunityRating,
                                 item.CriticRating);
                             ProgressTracker.AddSkipped(itemId, itemName, skipReason);
-                            Log($"⊘ Skipped '{itemName}' — {skipReason}", "skip");
+                            Log($"Skipped '{itemName}' — {skipReason}", "skip");
                         }
 
+                        if (ratings.Failures.Count == 0) ScanHistoryManager.UpdateItemEntry(itemId, item.CommunityRating, item.CriticRating, itemUpdated ? changeDetails : null,
+                            TieredRescan.IsRecentTier(config, item.PremiereDate, ScanHistoryManager.GetEntry(itemId), DateTime.UtcNow));
+                        if (ratings.Failures.Count > 0) {
+                            ScanHistoryManager.MarkFailed(itemId);
+                            errors++;
+                            ProgressTracker.AddFailure(itemId, itemName, string.Join("; ", ratings.Failures.Distinct()));
+                        }
                         processed++;
                         ProgressTracker.UpdateProgress(processed, updated, skipped, errors, itemName);
                         progress.Report((double)processed / items.Count * 100);
 
-                        // Save scan history periodically (every 10 items)
-                        if (processed % 10 == 0)
+                        // Checkpoint without rewriting growing history for every small batch.
+                        if (processed % 100 == 0 || DateTime.UtcNow - lastHistorySave > TimeSpan.FromSeconds(30))
                         {
                             ScanHistoryManager.Save();
+                            lastHistorySave = DateTime.UtcNow;
                         }
 
-                        // Delay only after remote HTTP work (not for local dataset-only lookups).
-                        if (ratings.QueriedOmdb || ratings.QueriedMdbList || ratings.AttemptedHtmlScrape)
-                            await Task.Delay(1000, cancellationToken);
-                        else
-                            await Task.Delay(150, cancellationToken);
                     }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { wasCancelled = true; break; }
                     catch (Exception ex)
                     {
+                        ScanHistoryManager.MarkFailed(itemId);
                         errors++;
                         processed++;
                         ProgressTracker.AddFailure(itemId, itemName, ex.Message);
-                        Log($"✗ Error processing '{itemName}': {ex.Message}", "error");
+                        Log($"Error processing '{itemName}': {ex.Message}", "error");
                         ProgressTracker.UpdateProgress(processed, updated, skipped, errors, itemName);
                     }
                 }
@@ -2622,8 +2646,20 @@ namespace RatingSync
         {
             Log(reason, "warning");
             ProgressTracker.Start(0, 0, reason);
+            ProgressTracker.SetJobId(_jobId);
             ProgressTracker.SetMessage(reason);
             ProgressTracker.Stop();
+        }
+
+        private static readonly RequestPacer OmdbPacer = new RequestPacer();
+        private static readonly RequestPacer MdbPacer = new RequestPacer();
+        private async Task BeforeProviderRequest(string provider, CancellationToken token) {
+            await (provider == "omdb" ? OmdbPacer : MdbPacer).Wait(token).ConfigureAwait(false);
+            var config = Plugin.Instance.Configuration;
+            var enabled = provider == "omdb" ? config.OmdbRateLimitEnabled : config.MdbListRateLimitEnabled;
+            var limit = provider == "omdb" ? config.OmdbDailyLimit : config.MdbListDailyLimit;
+            if (enabled && ScanHistoryManager.GetTodayRequestCount(provider) >= limit) throw new ProviderQuotaException();
+            ScanHistoryManager.IncrementRequestCount(provider);
         }
 
         private static readonly HttpClient SharedHttpClient = CreateSharedHttpClient();
@@ -2666,28 +2702,20 @@ namespace RatingSync
                     var episodeId = NormalizeImdbTconst(imdbId);
                     if (string.IsNullOrWhiteSpace(episodeId) && !string.IsNullOrWhiteSpace(episodeInfo.SeriesImdbId))
                     {
-                        // Prefer HTML episode list; fall back to official episode dataset if pages are blocked.
-                        result.AttemptedHtmlScrape = true;
-                        episodeId = await TryResolveEpisodeImdbIdFromSeriesEpisodesPage(
-                            episodeInfo.SeriesImdbId,
-                            episodeInfo.SeasonNumber,
-                            episodeInfo.EpisodeNumber);
-                        if (string.IsNullOrWhiteSpace(episodeId))
-                        {
-                            result.AttemptedImdbDataset = true;
-                            ProgressTracker.SetMessage($"IMDb episode index: {episodeInfo.SeriesName} S{episodeInfo.SeasonNumber:D2}");
-                            episodeId = await ImdbDatasetStore.TryResolveEpisodeIdAsync(
-                                episodeInfo.SeriesImdbId,
-                                episodeInfo.SeasonNumber,
-                                episodeInfo.EpisodeNumber,
-                                _logger);
+                        result.AttemptedImdbDataset = true;
+                        episodeId = await ImdbDatasetStore.TryResolveEpisodeIdAsync(
+                            episodeInfo.SeriesImdbId, episodeInfo.SeasonNumber, episodeInfo.EpisodeNumber, _logger, _scanToken).ConfigureAwait(false);
+                        if (string.IsNullOrWhiteSpace(episodeId)) {
+                            result.AttemptedHtmlScrape = true;
+                            episodeId = await TryResolveEpisodeImdbIdFromSeriesEpisodesPage(
+                                episodeInfo.SeriesImdbId, episodeInfo.SeasonNumber, episodeInfo.EpisodeNumber);
                         }
                     }
 
                     if (!string.IsNullOrWhiteSpace(episodeId))
                     {
                         result.AttemptedImdbDataset = true;
-                        await ImdbDatasetStore.EnsureRatingsReadyAsync(_logger).ConfigureAwait(false);
+                        await ImdbDatasetStore.EnsureRatingsReadyAsync(_logger, _scanToken).ConfigureAwait(false);
                         fallbackRating = ImdbDatasetStore.TryGetRating(episodeId);
 
                         if (!fallbackRating.HasValue)
@@ -2751,7 +2779,7 @@ namespace RatingSync
                         MergeOmdb(result, omdbData);
                     }
                     
-                    if ((!result.CommunityRating.HasValue || !result.CriticRating.HasValue) && canUseMdbList && !string.IsNullOrEmpty(config.MdbListApiKey))
+                    if ((!result.CommunityRating.HasValue || (config.UpdateCriticRating && !result.CriticRating.HasValue)) && canUseMdbList && !string.IsNullOrEmpty(config.MdbListApiKey))
                     {
                         var mdbData = await FetchFromMdbList(imdbId, config.MdbListApiKey, episodeInfo);
                         MergeMdb(result, mdbData);
@@ -2764,7 +2792,7 @@ namespace RatingSync
             {
                 result.ImdbScrapeAttempted = true;
                 result.AttemptedImdbDataset = true;
-                await ImdbDatasetStore.EnsureRatingsReadyAsync(_logger).ConfigureAwait(false);
+                await ImdbDatasetStore.EnsureRatingsReadyAsync(_logger, _scanToken).ConfigureAwait(false);
                 var datasetRating = ImdbDatasetStore.TryGetRating(imdbId);
                 if (datasetRating.HasValue)
                 {
@@ -2789,16 +2817,19 @@ namespace RatingSync
         private static void MergeOmdb(RatingData target, RatingData src)
         {
             if (src == null) return;
+            target.Failures.AddRange(src.Failures);
             target.QueriedOmdb |= src.QueriedOmdb;
             target.OmdbHttpCalls += src.OmdbHttpCalls;
             if (!target.CommunityRating.HasValue && src.CommunityRating.HasValue)
             {
                 target.CommunityRating = src.CommunityRating;
+                target.CommunitySource = "OMDb";
                 target.UsedOmdb = true;
             }
             if (!target.CriticRating.HasValue && src.CriticRating.HasValue)
             {
                 target.CriticRating = src.CriticRating;
+                target.CriticSource = "OMDb";
                 target.UsedOmdb = true;
             }
             if (src.QueriedOmdb && !target.UsedOmdb)
@@ -2808,16 +2839,19 @@ namespace RatingSync
         private static void MergeMdb(RatingData target, RatingData src)
         {
             if (src == null) return;
+            target.Failures.AddRange(src.Failures);
             target.QueriedMdbList |= src.QueriedMdbList;
             target.MdbListHttpCalls += src.MdbListHttpCalls;
             if (!target.CommunityRating.HasValue && src.CommunityRating.HasValue)
             {
                 target.CommunityRating = src.CommunityRating;
+                target.CommunitySource = "MDBList";
                 target.UsedMdbList = true;
             }
             if (!target.CriticRating.HasValue && src.CriticRating.HasValue)
             {
                 target.CriticRating = src.CriticRating;
+                target.CriticSource = "MDBList";
                 target.UsedMdbList = true;
             }
         }
@@ -2832,27 +2866,36 @@ namespace RatingSync
                 if (episodeInfo != null)
                 {
                     if (!string.IsNullOrWhiteSpace(imdbId))
-                        url = $"http://www.omdbapi.com/?i={imdbId}&apikey={apiKey}";
+                        url = $"https://www.omdbapi.com/?i={imdbId}&apikey={apiKey}";
                     else
-                        url = $"http://www.omdbapi.com/?i={episodeInfo.SeriesImdbId}&Season={episodeInfo.SeasonNumber}&Episode={episodeInfo.EpisodeNumber}&apikey={apiKey}";
+                        url = $"https://www.omdbapi.com/?i={episodeInfo.SeriesImdbId}&Season={episodeInfo.SeasonNumber}&Episode={episodeInfo.EpisodeNumber}&apikey={apiKey}";
                 }
                 else
                 {
-                    url = $"http://www.omdbapi.com/?i={imdbId}&apikey={apiKey}";
+                    url = $"https://www.omdbapi.com/?i={imdbId}&apikey={apiKey}";
                 }
 
-                using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15)))
+                using (var cts = CancellationTokenSource.CreateLinkedTokenSource(_scanToken))
                 {
+                    cts.CancelAfter(TimeSpan.FromSeconds(15));
+                    await BeforeProviderRequest("omdb", _scanToken);
                     result.QueriedOmdb = true;
                     result.OmdbHttpCalls = 1;
-                    var response = await SharedHttpClient.GetAsync(url, cts.Token);
+                    using (var response = await SharedHttpClient.GetAsync(url, cts.Token))
+                    {
                     var responseBody = await response.Content.ReadAsStringAsync();
                     
-                    if (!response.IsSuccessStatusCode)
+                    if (!response.IsSuccessStatusCode) {
+                        result.Failures.Add("Provider request failed (HTTP " + (int)response.StatusCode + ")");
                         return result;
+                    }
                     
                     var data = _jsonSerializer.DeserializeFromString<OmdbResponse>(responseBody);
 
+                    if (data == null) result.Failures.Add("OMDb returned an invalid response");
+                    else if (data.Response != "True" && data.Error != null &&
+                        (data.Error.IndexOf("limit", StringComparison.OrdinalIgnoreCase) >= 0 || data.Error.IndexOf("key", StringComparison.OrdinalIgnoreCase) >= 0))
+                        result.Failures.Add("OMDb rejected the request: check API key or quota");
                     if (data != null && data.Response == "True")
                     {
                         if (!string.IsNullOrEmpty(data.imdbRating) && data.imdbRating != "N/A")
@@ -2882,14 +2925,10 @@ namespace RatingSync
                     }
                 }
             }
-            catch (TaskCanceledException)
-            {
-                // Timeout - ignore
             }
-            catch (Exception)
-            {
-                // API error - ignore
-            }
+            catch (OperationCanceledException) when (_scanToken.IsCancellationRequested) { throw; }
+            catch (OperationCanceledException) { result.Failures.Add("OMDb timed out"); }
+            catch (Exception ex) { result.Failures.Add(ex is ProviderQuotaException ? "OMDb daily limit reached" : "OMDb request failed"); }
 
             return result;
         }
@@ -2989,26 +3028,23 @@ namespace RatingSync
             
             try
             {
-                using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15)))
+                using (var cts = CancellationTokenSource.CreateLinkedTokenSource(_scanToken))
                 {
-                    // Try as show first for series, then movie
-                    var url = $"https://api.mdblist.com/imdb/show/{imdbId}?apikey={apiKey}";
+                    cts.CancelAfter(TimeSpan.FromSeconds(15));
+                    await BeforeProviderRequest("mdblist", _scanToken);
+                    var mediaType = _isMovie ? "movie" : "show";
+                    var url = $"https://api.mdblist.com/imdb/{mediaType}/{imdbId}?apikey={apiKey}";
                     result.QueriedMdbList = true;
                     result.MdbListHttpCalls = 1;
 
-                    var response = await SharedHttpClient.GetAsync(url, cts.Token);
+                    using (var response = await SharedHttpClient.GetAsync(url, cts.Token))
+                    {
                     var responseBody = await response.Content.ReadAsStringAsync();
                     
-                    if (!response.IsSuccessStatusCode || string.IsNullOrEmpty(responseBody) || responseBody.Contains("\"ratings\":null"))
-                    {
-                        url = $"https://api.mdblist.com/imdb/movie/{imdbId}?apikey={apiKey}";
-                        result.MdbListHttpCalls = 2;
-                        response = await SharedHttpClient.GetAsync(url, cts.Token);
-                        responseBody = await response.Content.ReadAsStringAsync();
-                    }
-                    
-                    if (!response.IsSuccessStatusCode)
+                    if (!response.IsSuccessStatusCode) {
+                        result.Failures.Add("Provider request failed (HTTP " + (int)response.StatusCode + ")");
                         return result;
+                    }
                     
                     var data = _jsonSerializer.DeserializeFromString<MdbListResponse>(responseBody);
 
@@ -3025,7 +3061,7 @@ namespace RatingSync
 
                         var rtRating = data.ratings.FirstOrDefault(r =>
                             string.Equals(r.source, "tomatoes", StringComparison.OrdinalIgnoreCase));
-                        if (rtRating != null && rtRating.value.HasValue && rtRating.value.Value > 0)
+                        if (rtRating != null && rtRating.value.HasValue && rtRating.value.Value >= 0 && rtRating.value.Value <= 100)
                         {
                             result.CriticRating = rtRating.value.Value;
                             result.UsedMdbList = true;
@@ -3033,10 +3069,10 @@ namespace RatingSync
                     }
                 }
             }
-            catch (Exception)
-            {
-                // API error - ignore
             }
+            catch (OperationCanceledException) when (_scanToken.IsCancellationRequested) { throw; }
+            catch (OperationCanceledException) { result.Failures.Add("MDBList timed out"); }
+            catch (Exception ex) { result.Failures.Add(ex is ProviderQuotaException ? "MDBList daily limit reached" : "MDBList request failed"); }
 
             return result;
         }
@@ -3068,7 +3104,8 @@ namespace RatingSync
                     client.DefaultRequestHeaders.TryAddWithoutValidation("Upgrade-Insecure-Requests", "1");
 
                     var url = $"https://www.imdb.com/title/{imdbId}/";
-                    var response = await client.GetAsync(url);
+                    using (var response = await client.GetAsync(url, _scanToken))
+                    {
 
                     // AWS WAF often returns 202 with a challenge interstitial instead of the title page.
                     if (!response.IsSuccessStatusCode || (int)response.StatusCode == 202)
@@ -3140,10 +3177,12 @@ namespace RatingSync
                     }
                 }
             }
-            catch (TaskCanceledException)
+            }
+            catch (TaskCanceledException) when (!_scanToken.IsCancellationRequested)
             {
                 // Timeout
             }
+            catch (OperationCanceledException) when (_scanToken.IsCancellationRequested) { throw; }
             catch (Exception)
             {
                 // Page lookup error - ignore
@@ -3184,7 +3223,8 @@ namespace RatingSync
                     client.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "en-US,en;q=0.9");
 
                     var url = $"https://www.imdb.com/title/{seriesImdbId}/episodes?season={seasonNumber}";
-                    var response = await client.GetAsync(url);
+                    using (var response = await client.GetAsync(url, _scanToken))
+                    {
                     if (!response.IsSuccessStatusCode || (int)response.StatusCode == 202)
                         return null;
 
@@ -3258,6 +3298,8 @@ namespace RatingSync
                     }
                 }
             }
+            }
+            catch (OperationCanceledException) when (_scanToken.IsCancellationRequested) { throw; }
             catch
             {
                 // ignore
@@ -3288,6 +3330,9 @@ namespace RatingSync
 
         private class RatingData
         {
+            public List<string> Failures { get; } = new List<string>();
+            public string CommunitySource { get; set; }
+            public string CriticSource { get; set; }
             public float? CommunityRating { get; set; }
             public float? CriticRating { get; set; }
             public bool UsedOmdb { get; set; }

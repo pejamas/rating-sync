@@ -1,0 +1,26 @@
+Rating Sync 1.1.0 release verification
+
+Install only when ready to restart Emby:
+1. Stop Emby Server.
+2. Back up the existing plugins/RatingSync.dll and the RatingSync configuration/history folder.
+3. Replace RatingSync.dll with the release DLL, then start Emby Server.
+4. Reload the plugin page (hard refresh if it shows the old interface).
+
+First verify with one movie, then one episode. Confirm actual library ratings and provider counters.
+Check an unchanged item, a missing rating, and a provider failure/invalid key using a disposable test configuration.
+Check Stop during an HTTP request or dataset preparation. Check an empty selection is rejected.
+Check a non-admin cannot access plugin routes.
+For a larger targeted scan, confirm new rows appear newest-first by completion order, not numeric item ID.
+Expand a row and scroll down; new results should preserve both while scanning.
+Use History > With errors to find failed runs, and inspect the default error/details report.
+The first IMDb episode index build adds one-time work and disk use. Later lookups reuse it.
+The updated Arloes interface supports the new Start route; older versions still use RunSelected.
+
+Validation performed without modifying the live Emby library:
+- Backend console regression checks, including queue scope/conflicts, atomic saves, cancellation, index invalidation, admin routes, persisted retry state and result order.
+- Browser fixture checks using production UI code: ordering, retained nodes/disclosures, scroll anchoring and lightweight polls.
+- Browser fixture checks and local preview generation.
+
+UI preview (sample data only): python tools/preview.py
+Serve preview/ locally; add ?test=ordering to run live-update browser checks.
+Rollback: stop Emby, restore the previous DLL, restart. New history fields are additive.

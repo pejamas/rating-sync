@@ -22,3 +22,10 @@ jobs:
 
       - name: Build (Release)
         run: dotnet build -c Release --no-restore
+
+      - name: Regression checks
+        run: |
+          dotnet build tests/RatingSync.Tests.csproj -c Release
+          & ./tests/bin/Release/net462/RatingSync.Tests.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check Configuration/configPage.js

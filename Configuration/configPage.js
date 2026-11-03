@@ -2,20 +2,7 @@ define(['baseView', 'loading', 'toast', 'emby-input', 'emby-button', 'emby-selec
 function (BaseView, loading, toast) {
     'use strict';
 
-    var pluginId = '12345678-1234-1234-1234-123456789012';
-
-    // =========================================================================
-    // i18n layer
-    // -------------------------------------------------------------------------
-    // 1. STRINGS: key -> text, per locale. en-US mirrors the original wording.
-    // 2. STATIC_ZH: English source text -> Chinese, applied to the HTML template
-    //    by translateDom(). gettext style so configPage.html needs no per-node
-    //    data-i18n attributes.
-    // 3. localizeDetail(): the backend keeps emitting canonical English detail
-    //    strings (they are persisted in scan_history.json and matched with
-    //    indexOf by the report/missing-data filters). We therefore never
-    //    translate them server-side, only at render time.
-    // =========================================================================
+    var pluginId = '1770753c-43e9-4454-9782-2c3b44ac06ce';
 
     var LOCALE_ZH = 'zh-CN';
     var LOCALE_EN = 'en-US';
@@ -28,7 +15,6 @@ function (BaseView, loading, toast) {
             'api.usageOn': 'API usage — {date} (resets 00:00 UTC)',
             'api.usageToday': 'API usage — today (resets 00:00 UTC)',
             'api.usage': 'API usage (resets 00:00 UTC)',
-
             'toast.missingSessionId': 'Missing SessionId',
             'toast.deleteConfirm': 'Delete this scan? This cannot be undone.',
             'toast.scanDeleted': 'Scan deleted',
@@ -51,33 +37,27 @@ function (BaseView, loading, toast) {
             'toast.clipboardUnavailable': 'Clipboard not available in this environment',
             'toast.reportCopied': 'Report copied',
             'toast.copyFailed': 'Failed to copy report',
-
             'del.missingSessionId': 'Missing SessionId',
             'del.notFound': 'Scan not found',
             'del.inProgress': 'Cannot delete a scan that is still in progress',
             'del.deleted': 'Scan deleted',
             'del.failed': 'Failed to delete scan',
-
             'opt.allLibraries': 'All Libraries',
             'opt.allSeries': 'All Series',
             'opt.allSeasons': 'All Seasons',
             'opt.allEpisodes': 'All Episodes',
             'opt.allMovies': 'All Movies',
             'opt.episodeCount': '({n} episodes)',
-
             'time.hms': '{h}h {m}m {s}s',
             'time.hm': '{h}h {m}m',
             'time.ms': '{m}m {s}s',
             'time.s': '{s}s',
-
             'list.noUpdated': 'No items updated yet',
             'list.noSkipped': 'No items skipped yet',
             'list.noFailures': 'No failures',
             'list.showingLatest': 'Showing latest {shown} of {total}',
-
             'progress.smartSkipped': 'Smart-skipped {n} item(s) before this scan',
             'progress.elapsed': 'Elapsed: {time}',
-
             'ui.runningCount': 'Running ({done}/{total})',
             'ui.starting': 'Starting...',
             'ui.alreadyRunning': 'Already running',
@@ -101,7 +81,6 @@ function (BaseView, loading, toast) {
             'ui.runSummary': '{u} updated, {s} skipped',
             'ui.inProgress': 'In progress',
             'ui.inProgressDots': 'In progress...',
-
             'history.loading': 'Loading scan history...',
             'history.empty': 'No scan history yet. Run a scan to see history here.',
             'history.error': 'Error loading scan history.',
@@ -112,7 +91,6 @@ function (BaseView, loading, toast) {
             'history.delete': 'Delete',
             'history.viewReport': 'View report',
             'history.cancelledSuffix': ' (Cancelled)',
-
             'report.title': 'Scan Report',
             'report.titleWithDate': 'Scan Report — {date}',
             'report.loading': 'Loading scan report...',
@@ -151,13 +129,11 @@ function (BaseView, loading, toast) {
             'report.unknown': 'Unknown',
             'report.statusCompleted': 'Completed',
             'report.statusCompletedWithErrors': 'Completed with errors',
-
             'copy.title': 'Rating Sync - Scan Report',
             'copy.started': 'Started: ',
             'copy.finished': 'Finished: ',
             'copy.total': 'Total: ',
             'copy.processed': 'Processed: ',
-
             'missing.searching': 'Searching for items with missing data...',
             'missing.none': 'No items found with missing data. Great job!',
             'missing.error': 'Error searching for missing data.',
@@ -171,7 +147,6 @@ function (BaseView, loading, toast) {
             'missing.colCritic': 'Critic Rating',
             'missing.colIssue': 'Issue',
             'missing.showing': 'Showing {n} items (max 500)',
-
             'itemhist.loading': 'Searching item history...',
             'itemhist.none': 'No items found matching "{q}".',
             'itemhist.error': 'Error searching item history.',
@@ -180,11 +155,51 @@ function (BaseView, loading, toast) {
             'itemhist.colLastScanned': 'Last Scanned',
             'itemhist.colCurrent': 'Current Rating',
             'itemhist.colLastChange': 'Last Change',
-
             'type.movie': 'Movie',
             'type.series': 'Series',
             'type.episode': 'Episode',
-            'type.unknown': 'Unknown'
+            'type.unknown': 'Unknown',
+            'confirm.deleteScan': 'Delete this scan? This cannot be undone.',
+            'toast.loadConfigFailed': 'Error loading configuration',
+            'toast.saveConfigFailed': 'Error saving configuration',
+            'toast.scanNotStarted': 'Scan not started. Check your selection and whether another scan is running.',
+            'list.alreadyCurrent': 'Already current',
+            'list.missingMetadata': 'Missing metadata',
+            'list.ratingUnavailable': 'Rating unavailable',
+            'list.details': 'Details',
+            'list.colTitle': 'Title',
+            'ui.runningProgress': 'Running ({done}/{total})',
+            'ui.elapsedPrefix': 'Elapsed: ',
+            'ui.chooseLibrary': 'Choose a library first',
+            'ui.couldNotStart': 'Could not start scan',
+            'ui.connectionInterrupted': 'Connection interrupted. Retrying…',
+            'ui.scopeInfoTarget': 'Choose a library, then narrow to a show, season, episode or movie. Selected items bypass smart-scan rules.',
+            'ui.scopeInfoSaved': 'Uses your saved item types and smart-scan rules.',
+            'ui.unsupportedTypePrefix': 'Unsupported item type: ',
+            'history.running': 'Running',
+            'history.stopped': 'Stopped',
+            'history.needsAttention': 'Needs attention',
+            'history.complete': 'Complete',
+            'history.updatedUnit': 'updated',
+            'history.errorsUnit': 'errors',
+            'history.noChanges': 'No changes',
+            'history.ratingScan': 'Rating scan',
+            'scope.entireLibrary': 'Entire library',
+            'scope.selectedItems': 'Selected items ({n})',
+            'history.processedUnit': 'processed',
+            'history.skippedUnit': 'skipped',
+            'history.view': 'View',
+            'history.started': 'Started',
+            'history.result': 'Result',
+            'history.changes': 'Changes',
+            'history.duration': 'Duration',
+            'history.noMatch': 'No scans match this filter.',
+            'report.result': 'Result',
+            'report.colRating': 'Rating',
+            'report.colBefore': 'Before',
+            'report.colAfter': 'After',
+            'report.colSource': 'Source',
+            'report.scanDetails': 'Scan details and API usage',
         },
 
         'zh-CN': {
@@ -193,7 +208,6 @@ function (BaseView, loading, toast) {
             'api.usageOn': 'API 用量 — {date}（UTC 00:00 重置）',
             'api.usageToday': 'API 用量 — 今天（UTC 00:00 重置）',
             'api.usage': 'API 用量（UTC 00:00 重置）',
-
             'toast.missingSessionId': '缺少 SessionId',
             'toast.deleteConfirm': '确定删除这条扫描记录？此操作不可撤销。',
             'toast.scanDeleted': '扫描记录已删除',
@@ -216,33 +230,27 @@ function (BaseView, loading, toast) {
             'toast.clipboardUnavailable': '当前环境不支持剪贴板',
             'toast.reportCopied': '报告已复制',
             'toast.copyFailed': '复制报告失败',
-
             'del.missingSessionId': '缺少 SessionId',
             'del.notFound': '未找到该扫描记录',
             'del.inProgress': '无法删除仍在进行中的扫描',
             'del.deleted': '扫描记录已删除',
             'del.failed': '删除扫描记录失败',
-
             'opt.allLibraries': '全部媒体库',
             'opt.allSeries': '全部剧集',
             'opt.allSeasons': '全部季',
             'opt.allEpisodes': '全部单集',
             'opt.allMovies': '全部电影',
             'opt.episodeCount': '（{n} 集）',
-
             'time.hms': '{h} 时 {m} 分 {s} 秒',
             'time.hm': '{h} 时 {m} 分',
             'time.ms': '{m} 分 {s} 秒',
             'time.s': '{s} 秒',
-
             'list.noUpdated': '暂无已更新项目',
             'list.noSkipped': '暂无已跳过项目',
             'list.noFailures': '无失败项',
             'list.showingLatest': '仅显示最近 {shown} 条，共 {total} 条',
-
             'progress.smartSkipped': '本次扫描前已智能跳过 {n} 个项目',
             'progress.elapsed': '已用时：{time}',
-
             'ui.runningCount': '运行中（{done}/{total}）',
             'ui.starting': '正在启动…',
             'ui.alreadyRunning': '已在运行',
@@ -266,7 +274,6 @@ function (BaseView, loading, toast) {
             'ui.runSummary': '更新 {u} 项，跳过 {s} 项',
             'ui.inProgress': '进行中',
             'ui.inProgressDots': '进行中…',
-
             'history.loading': '正在加载扫描历史…',
             'history.empty': '暂无扫描历史。运行一次扫描后即可在此查看。',
             'history.error': '加载扫描历史失败。',
@@ -277,7 +284,6 @@ function (BaseView, loading, toast) {
             'history.delete': '删除',
             'history.viewReport': '查看报告',
             'history.cancelledSuffix': '（已取消）',
-
             'report.title': '扫描报告',
             'report.titleWithDate': '扫描报告 — {date}',
             'report.loading': '正在加载扫描报告…',
@@ -316,13 +322,11 @@ function (BaseView, loading, toast) {
             'report.unknown': '未知',
             'report.statusCompleted': '已完成',
             'report.statusCompletedWithErrors': '已完成（有错误）',
-
             'copy.title': '评分同步 - 扫描报告',
             'copy.started': '开始：',
             'copy.finished': '结束：',
             'copy.total': '总计：',
             'copy.processed': '已处理：',
-
             'missing.searching': '正在搜索数据缺失的项目…',
             'missing.none': '没有发现数据缺失的项目，很完美！',
             'missing.error': '搜索缺失数据失败。',
@@ -336,7 +340,6 @@ function (BaseView, loading, toast) {
             'missing.colCritic': '影评人评分',
             'missing.colIssue': '问题',
             'missing.showing': '共显示 {n} 个项目（最多 500）',
-
             'itemhist.loading': '正在搜索项目历史…',
             'itemhist.none': '未找到匹配「{q}」的项目。',
             'itemhist.error': '搜索项目历史失败。',
@@ -345,11 +348,51 @@ function (BaseView, loading, toast) {
             'itemhist.colLastScanned': '上次扫描',
             'itemhist.colCurrent': '当前评分',
             'itemhist.colLastChange': '上次变更',
-
             'type.movie': '电影',
             'type.series': '剧集',
             'type.episode': '单集',
-            'type.unknown': '未知'
+            'type.unknown': '未知',
+            'confirm.deleteScan': '确定删除此次扫描？此操作无法撤销。',
+            'toast.loadConfigFailed': '加载配置失败',
+            'toast.saveConfigFailed': '保存配置失败',
+            'toast.scanNotStarted': '扫描未启动。请检查你的选择，以及是否已有扫描在运行。',
+            'list.alreadyCurrent': '已是最新',
+            'list.missingMetadata': '缺少元数据',
+            'list.ratingUnavailable': '无评分数据',
+            'list.details': '详情',
+            'list.colTitle': '标题',
+            'ui.runningProgress': '运行中（{done}/{total}）',
+            'ui.elapsedPrefix': '已用时：',
+            'ui.chooseLibrary': '请先选择一个媒体库',
+            'ui.couldNotStart': '无法启动扫描',
+            'ui.connectionInterrupted': '连接中断，正在重试…',
+            'ui.scopeInfoTarget': '先选择媒体库，再缩小到剧集、季、单集或电影。所选项目将跳过智能扫描规则。',
+            'ui.scopeInfoSaved': '使用已保存的项目类型与智能扫描规则。',
+            'ui.unsupportedTypePrefix': '不支持的项目类型：',
+            'history.running': '运行中',
+            'history.stopped': '已停止',
+            'history.needsAttention': '需处理',
+            'history.complete': '已完成',
+            'history.updatedUnit': '项更新',
+            'history.errorsUnit': '项错误',
+            'history.noChanges': '无变更',
+            'history.ratingScan': '评分扫描',
+            'scope.entireLibrary': '整个媒体库',
+            'scope.selectedItems': '所选项目（{n}）',
+            'history.processedUnit': '项已处理',
+            'history.skippedUnit': '项已跳过',
+            'history.view': '查看',
+            'history.started': '开始时间',
+            'history.result': '结果',
+            'history.changes': '变更',
+            'history.duration': '耗时',
+            'history.noMatch': '没有符合此筛选条件的扫描。',
+            'report.result': '结果',
+            'report.colRating': '评分项',
+            'report.colBefore': '原值',
+            'report.colAfter': '新值',
+            'report.colSource': '来源',
+            'report.scanDetails': '扫描详情与 API 用量',
         }
     };
 
@@ -470,6 +513,38 @@ function (BaseView, loading, toast) {
         '🔍 Search': '🔍 搜索',
         'Search for items to see their scan history.': '搜索项目以查看其扫描历史。',
         'Search by item name...': '按项目名称搜索…',
+        'Your library ratings, kept current.': '让媒体库评分保持最新。',
+        'Choose which source to prioritize. If a rating isn\'t found, the other source will be tried.': '选择优先使用的数据源。若某个源查不到评分，将自动尝试另一个源。',
+        'Enable Tiered Rescanning': '启用分层重扫',
+        'Rescan newly released items more often while their ratings are still settling. Uses the release (premiere) date; items without one use the standard interval.': '在评分尚未稳定时，更频繁地重扫新发布的项目。以首播日期判断；没有该日期的项目使用标准间隔。',
+        'Recent Release Age (Days)': '新近发布天数',
+        'Items released within this many days count as recent. Default: 30': '在此天数内发布的项目视为「新近发布」。默认：30',
+        'Recent Item Rescan Interval (Days)': '新近项目重扫间隔（天）',
+        'Rescan interval for recent items. Default: 3': '新近项目的重扫间隔。默认：3',
+        'Max Rescans Before Graduating (Optional)': '升级前最大重扫次数（可选）',
+        'After this many recent-tier rescans, an item moves to the standard interval even if it is still recent. 0 = no cap.': '新近层级重扫达到此次数后，即使仍是新近项目也会转为标准间隔。0 表示不限制。',
+        'New scan': '新建扫描',
+        'Scan scope': '扫描范围',
+        'Entire library': '整个媒体库',
+        'Choose a library or item': '选择媒体库或项目',
+        'Test mode: full scans check one item.': '测试模式：全量扫描只检查一个项目。',
+        'Start scan': '开始扫描',
+        'Latest scan': '最近扫描',
+        'Scans': '扫描记录',
+        'Missing ratings': '缺失评分',
+        'Item lookup': '项目查询',
+        'Open a scan to see exactly what changed.': '打开某次扫描查看具体变更。',
+        'Show': '显示',
+        'All scans': '全部扫描',
+        'With updates': '有更新',
+        'With errors': '有错误',
+        'Stopped': '已停止',
+        'Find missing ratings': '查找缺失评分',
+        'Find Missing': '查找缺失',
+        'Look up an item': '查询项目',
+        'Search': '搜索',
+        'Uses your saved item types and smart-scan rules.': '使用已保存的项目类型与智能扫描规则。',
+        'History views': '历史视图',
         'Rating Sync': '评分同步'
     };
 
@@ -493,6 +568,7 @@ function (BaseView, loading, toast) {
         ['Sources returned no usable IMDb or RT data for this item (new or unrated episodes are common).', '数据源未返回该项目的可用 IMDb 或烂番茄数据（新剧集或未评分剧集较常见）。'],
         ['No changes needed, consulted ', '无需更改，已查询 '],
         ['Already up to date, ', '已是最新，'],
+        ['Already up to date', '已是最新'],
         ['IMDb community already matches library', 'IMDb 社区评分已与媒体库一致'],
         ['RT critic already matches library', '烂番茄影评评分已与媒体库一致'],
         ['IMDb community score not returned by consulted sources', '已查询的数据源未返回 IMDb 社区评分'],
@@ -504,8 +580,8 @@ function (BaseView, loading, toast) {
         ['IMDb page lookup', 'IMDb 页面查询'],
         ['IMDb dataset', 'IMDb 数据集'],
         ['IMDb page', 'IMDb 页面'],
-        ['IMDb community ', 'IMDb 社区评分 '],
-        ['RT critic ', '烂番茄影评评分 '],
+        ['IMDb community', 'IMDb 社区评分'],
+        ['RT critic', '烂番茄评分'],
         ['No IMDb ID', '无 IMDb ID'],
         ['No Community Rating', '无社区评分'],
         ['No Critic Rating', '无影评人评分'],
@@ -517,6 +593,28 @@ function (BaseView, loading, toast) {
         [' items for selected scan', ' 个项目（指定扫描）'],
         [' items (added last ', ' 个项目（添加于最近 '],
         [' day(s))', ' 天）'],
+        ['All configured APIs have reached their daily limits. Stopping for today.', '所有已配置的 API 均已达到每日限额，今天先停止。'],
+        ['Starting rating refresh task...', '正在启动评分刷新任务…'],
+        ['TEST MODE: Processing only first item', '测试模式：仅处理第一个项目'],
+        ['Task cancelled by user', '任务已被用户取消'],
+        ['No eligible items in this selection.', '本次选择中没有符合条件的项目。'],
+        ['Rating Sync task is unavailable.', '评分同步任务不可用。'],
+        ['A rating scan is already running or queued.', '已有评分扫描正在运行或排队中。'],
+        ['Choose either a target or the full library.', '请选择目标项目或整个媒体库。'],
+        ['Cannot delete a scan that is still in progress', '无法删除仍在进行中的扫描'],
+        ['OMDb rejected the request: check API key or quota', 'OMDb 拒绝了请求：请检查 API Key 或配额'],
+        ['OMDb returned an invalid response', 'OMDb 返回了无效响应'],
+        ['Provider request failed (HTTP ', '数据源请求失败 (HTTP '],
+        ['OMDb daily limit reached', 'OMDb 已达每日限额'],
+        ['MDBList daily limit reached', 'MDBList 已达每日限额'],
+        ['OMDb request failed', 'OMDb 请求失败'],
+        ['MDBList request failed', 'MDBList 请求失败'],
+        ['OMDb timed out', 'OMDb 请求超时'],
+        ['MDBList timed out', 'MDBList 请求超时'],
+        ['Missing SessionId', '缺少 SessionId'],
+        ['Scan deleted', '扫描记录已删除'],
+        ['Scan not found', '未找到该扫描记录'],
+        ['Rotten Tomatoes', '烂番茄'],
         ['Downloading ', '正在下载 '],
         [' (none)', '（无）'],
         [' none ', ' 无 '],
@@ -566,6 +664,17 @@ function (BaseView, loading, toast) {
         return out;
     }
 
+    // Scan scope is persisted by the backend as canonical English
+    // ("Entire library" / "Selected items (N)") or an item name.
+    function scopeLabel(scope) {
+        var raw = scope == null ? '' : String(scope);
+        if (!raw) return t('history.ratingScan');
+        if (raw === 'Entire library') return t('scope.entireLibrary');
+        var m = /^Selected items \((\d+)\)$/.exec(raw);
+        if (m) return t('scope.selectedItems', { n: m[1] });
+        return raw;
+    }
+
     function typeLabel(type) {
         var key = 'type.' + String(type || '').toLowerCase();
         var table = STRINGS[detectLang()] || STRINGS[LOCALE_EN];
@@ -597,6 +706,11 @@ function (BaseView, loading, toast) {
                 var v = el.getAttribute('data-title');
                 var zh = STATIC_ZH[v];
                 if (zh !== undefined) el.setAttribute('data-title', zh);
+            });
+            Array.prototype.forEach.call(root.querySelectorAll('[aria-label]'), function (el) {
+                var v = el.getAttribute('aria-label');
+                var zh = STATIC_ZH[v];
+                if (zh !== undefined) el.setAttribute('aria-label', zh);
             });
         } catch (e) {
             console.error('i18n: translateDom failed', e);
@@ -701,9 +815,9 @@ function (BaseView, loading, toast) {
             if (todayLabel) {
                 html += '<span style="opacity:0.78;margin-right:0.6em">' + this.escapeHtml(t('api.usageOn', { date: todayLabel })) + '</span>';
             } else if (today) {
-                html += '<span style="opacity:0.78;margin-right:0.6em">' + t('api.usageToday') + '</span>';
+                html += '<span style="opacity:0.78;margin-right:0.6em">' + this.escapeHtml(t('api.usageToday')) + '</span>';
             } else {
-                html += '<span style="opacity:0.78;margin-right:0.6em">' + t('api.usage') + '</span>';
+                html += '<span style="opacity:0.78;margin-right:0.6em">' + this.escapeHtml(t('api.usage')) + '</span>';
             }
             html += '<span class="apiBadge"><span class="apiDot omdb"></span><span>' + this.escapeHtml(omdbText) + '</span></span>';
             html += '<span class="apiBadge"><span class="apiDot mdblist"></span><span>' + this.escapeHtml(mdbText) + '</span></span>';
@@ -718,7 +832,7 @@ function (BaseView, loading, toast) {
                 return;
             }
 
-            if (!confirm(t('toast.deleteConfirm'))) {
+            if (!confirm(t('confirm.deleteScan'))) {
                 return;
             }
 
@@ -738,10 +852,7 @@ function (BaseView, loading, toast) {
                     }
                     self.loadScanHistory(view);
                 } else {
-                    var code = res && res.Code ? String(res.Code) : '';
-                    var msg = code ? t('del.' + code) : '';
-                    if (!msg || msg.indexOf('del.') === 0) msg = t('toast.deleteFailed');
-                    toast(msg);
+                    toast((res && res.Message) ? localizeDetail(res.Message) : t('toast.deleteFailed'));
                 }
             }).catch(function() {
                 toast(t('toast.deleteFailed'));
@@ -1105,7 +1216,12 @@ function (BaseView, loading, toast) {
                 view.querySelector('#chkPrioritizeRecent').checked = config.PrioritizeRecentlyAdded !== false;
                 view.querySelector('#txtRecentDays').value = config.RecentlyAddedDays || 7;
                 view.querySelector('#chkSkipUnratedOnly').checked = config.SkipUnratedOnly === true;
-                
+                view.querySelector('#chkTieredRescan').checked = config.TieredRescanEnabled === true;
+                view.querySelector('#tieredRescanOptions').style.display = config.TieredRescanEnabled === true ? 'block' : 'none';
+                view.querySelector('#txtRecentReleaseDays').value = config.RecentReleaseDays || 30;
+                view.querySelector('#txtRecentRescanInterval').value = config.RecentRescanIntervalDays || 3;
+                view.querySelector('#txtRecentMaxRescans').value = config.RecentMaxRescans || 0;
+
                 view.querySelector('#chkTestMode').checked = config.TestMode === true;
 
                 var testBanner = view.querySelector('#testModeBanner');
@@ -1118,7 +1234,7 @@ function (BaseView, loading, toast) {
             }).catch(function (err) {
                 console.error('Error loading config:', err);
                 loading.hide();
-                toast({ text: t('toast.configLoad') });
+                toast({ text: t('toast.loadConfigFailed') });
             });
         }
 
@@ -1151,7 +1267,11 @@ function (BaseView, loading, toast) {
                 config.PrioritizeRecentlyAdded = view.querySelector('#chkPrioritizeRecent').checked;
                 config.RecentlyAddedDays = parseInt(view.querySelector('#txtRecentDays').value, 10) || 7;
                 config.SkipUnratedOnly = view.querySelector('#chkSkipUnratedOnly').checked;
-                
+                config.TieredRescanEnabled = view.querySelector('#chkTieredRescan').checked;
+                config.RecentReleaseDays = parseInt(view.querySelector('#txtRecentReleaseDays').value, 10) || 30;
+                config.RecentRescanIntervalDays = parseInt(view.querySelector('#txtRecentRescanInterval').value, 10) || 3;
+                config.RecentMaxRescans = Math.max(0, parseInt(view.querySelector('#txtRecentMaxRescans').value, 10) || 0);
+
                 config.TestMode = view.querySelector('#chkTestMode').checked;
 
                 ApiClient.updatePluginConfiguration(pluginId, config).then(function () {
@@ -1160,12 +1280,12 @@ function (BaseView, loading, toast) {
                 }).catch(function (err) {
                     console.error('Error saving config:', err);
                     loading.hide();
-                    toast({ text: t('toast.configSave') });
+                    toast({ text: t('toast.saveConfigFailed') });
                 });
             }).catch(function (err) {
                 console.error('Error getting config:', err);
                 loading.hide();
-                toast({ text: t('toast.configSave') });
+                toast({ text: t('toast.saveConfigFailed') });
             });
         }
 
@@ -1226,10 +1346,18 @@ function (BaseView, loading, toast) {
 
         renderResultList(view, items, listId, type) {
             var list = view.querySelector('#' + listId);
-            list.innerHTML = '';
-            
             var keys = Object.keys(items || {});
+            var order = (this.resultOrder || {})[listId] || [];
+            if (order.length) keys = order.filter(function(key) { return Object.prototype.hasOwnProperty.call(items, key); });
+            var existing = new Map();
+            Array.prototype.forEach.call(list.children, function(row) { if (row.dataset.itemKey) existing.set(row.dataset.itemKey, row); });
+            var nodes = [];
+            var scroller = list.parentElement;
+            var oldScroll = scroller.scrollTop;
+            var anchor = Array.prototype.find.call(list.children, function(row) { return row.dataset.itemKey && row.getBoundingClientRect().bottom > scroller.getBoundingClientRect().top; });
+            var anchorTop = anchor ? anchor.getBoundingClientRect().top : 0;
             if (keys.length === 0) {
+                list.innerHTML = '';
                 var emptyLi = document.createElement('li');
                 emptyLi.className = 'resultEmpty';
                 if (type === 'success') {
@@ -1246,32 +1374,73 @@ function (BaseView, loading, toast) {
             // Reverse to show most recent first; cap live list for performance
             keys.reverse();
             var shown = keys.slice(0, 200);
+            if (type === 'success' && Object.keys(this.ratingChanges || {}).length) {
+                var heading = existing.get('__header') || document.createElement('li'); heading.dataset.itemKey = '__header'; heading.className = 'resultItem resultColumns';
+                heading.innerHTML = '<span class="resultItemName">' + t('list.colTitle') + '</span><span class="ratingChange"><span>' + t('report.colRating') + '</span><span>' + t('report.colBefore') + '</span><span>' + t('report.colAfter') + '</span><span>' + t('report.colSource') + '</span></span>';
+                nodes.push(heading);
+            }
             
             shown.forEach(function(key) {
                 var unpacked = this.unpackDetail(items[key]);
                 var name = unpacked.name || key;
-                var detail = unpacked.detail || '';
+                var rawDetail = unpacked.detail || '';
+                var signature = JSON.stringify([name, rawDetail, (this.ratingChanges || {})[key] || []]);
+                var previous = existing.get(key);
+                if (previous && previous.dataset.signature === signature) { nodes.push(previous); return; }
                 // Legacy packed-as-detail-only when name empty and key looks like a title
                 if (!unpacked.name && key.indexOf('name:') !== 0 && !/^\d+$/.test(key)) {
                     name = key;
-                    detail = unpacked.detail;
+                    rawDetail = unpacked.detail;
                 }
                 var li = document.createElement('li');
                 li.className = 'resultItem ' + type;
-                li.innerHTML = '<span class="resultItemName">' + this.escapeHtml(name) + '</span>' +
-                              '<span class="resultItemDetail">' + this.escapeHtml(localizeDetail(detail)) + '</span>';
-                list.appendChild(li);
+                li.dataset.itemKey = key; li.dataset.signature = signature;
+                var changes = (this.ratingChanges || {})[key] || [];
+                // Backend detail stays canonical English; translate for display only.
+                var detail = localizeDetail(rawDetail);
+                var summary = detail;
+                if (type === 'skipped') {
+                    summary = /already matches|already current/i.test(rawDetail) ? t('list.alreadyCurrent') :
+                        /missing.*(id|index|metadata)/i.test(rawDetail) ? t('list.missingMetadata') : t('list.ratingUnavailable');
+                }
+                li.innerHTML = '<span class="resultItemName">' + this.escapeHtml(name) + '</span>';
+                var cell = document.createElement('div');
+                cell.className = 'resultItemDetail';
+                if (changes.length) {
+                    changes.forEach(function(change) {
+                        var row = document.createElement('div'); row.className = 'ratingChange';
+                        var before = change.Before == null ? '—' : change.Before;
+                        row.innerHTML = '<span>' + this.escapeHtml(localizeDetail(change.Rating)) + '</span><span>' + this.escapeHtml(before) +
+                            '</span><span>' + this.escapeHtml(change.After) + '</span><span>' + this.escapeHtml(localizeDetail(change.Source)) + '</span>';
+                        cell.appendChild(row);
+                    }, this);
+                } else {
+                    var shortText = document.createElement('span'); shortText.textContent = summary; cell.appendChild(shortText);
+                }
+                if (detail && (type !== 'success' || changes.length)) {
+                    var more = document.createElement('details');
+                    var label = document.createElement('summary'); label.textContent = t('list.details');
+                    var body = document.createElement('p'); body.textContent = detail;
+                    more.appendChild(label); more.appendChild(body); cell.appendChild(more);
+                }
+                li.appendChild(cell);
+                if (previous && previous.querySelector('details[open]')) { var disclosure = li.querySelector('details'); if (disclosure) disclosure.open = true; }
+                nodes.push(li);
             }, this);
 
             if (keys.length > shown.length) {
                 var more = document.createElement('li');
                 more.className = 'resultEmpty';
                 more.textContent = t('list.showingLatest', { shown: shown.length, total: keys.length });
-                list.appendChild(more);
+                nodes.push(more);
             }
+            nodes.forEach(function(node, index) { if (list.children[index] !== node) list.insertBefore(node, list.children[index] || null); });
+            while (list.children.length > nodes.length) list.removeChild(list.lastElementChild);
+            if (oldScroll > 0 && anchor && list.contains(anchor)) scroller.scrollTop += anchor.getBoundingClientRect().top - anchorTop;
+            else if (oldScroll === 0) scroller.scrollTop = 0;
         }
 
-        updateProgressUI(view, progress) {
+        updateProgressUI(view, progress, summaryOnly) {
             if (!progress) return;
             
             // Handle both PascalCase and camelCase property names
@@ -1303,6 +1472,8 @@ function (BaseView, loading, toast) {
             view.querySelector('#statUpdated').textContent = updatedItems;
             view.querySelector('#statSkipped').textContent = skippedItems;
             view.querySelector('#statErrors').textContent = errorItems;
+            view.querySelector('#statUpdated').classList.toggle('hasResults', updatedItems > 0);
+            view.querySelector('#statErrors').classList.toggle('hasResults', errorItems > 0);
             view.querySelector('#updatedBadge').textContent = updatedItems;
             view.querySelector('#skippedBadge').textContent = skippedItems;
             view.querySelector('#failureBadge').textContent = errorItems;
@@ -1310,8 +1481,8 @@ function (BaseView, loading, toast) {
             var smartNote = view.querySelector('#smartSkipNote');
             if (smartNote) {
                 if (smartSkipped > 0 || statusMessage) {
-                    var note = statusMessage || (t('progress.smartSkipped', { n: smartSkipped }));
-                    smartNote.textContent = localizeDetail(note);
+                    var note = statusMessage ? localizeDetail(statusMessage) : t('progress.smartSkipped', { n: smartSkipped });
+                    smartNote.textContent = note;
                     smartNote.classList.remove('hide');
                 } else {
                     smartNote.classList.add('hide');
@@ -1339,9 +1510,13 @@ function (BaseView, loading, toast) {
             }
 
             // Render result lists
-            this.renderResultList(view, updatedDetails, 'updatedList', 'success');
-            this.renderResultList(view, skippedDetails, 'skippedList', 'skipped');
-            this.renderResultList(view, failureDetails, 'failureList', 'failure');
+            if (!summaryOnly) {
+                this.ratingChanges = progress.Changes || progress.changes || {};
+                this.resultOrder = { updatedList: progress.UpdatedOrder || progress.updatedOrder || [], skippedList: progress.SkippedOrder || progress.skippedOrder || [], failureList: progress.FailureOrder || progress.failureOrder || [] };
+                this.renderResultList(view, updatedDetails, 'updatedList', 'success');
+                this.renderResultList(view, skippedDetails, 'skippedList', 'skipped');
+                this.renderResultList(view, failureDetails, 'failureList', 'failure');
+            }
 
             // Update start time for elapsed tracking
             if (startTime && !this.startTime) {
@@ -1350,7 +1525,7 @@ function (BaseView, loading, toast) {
 
             // Update status
             if (isRunning) {
-                this.setStatus(view, 'running', t('ui.runningCount', { done: processedItems, total: totalItems }));
+                this.setStatus(view, 'running', t('ui.runningProgress', { done: processedItems, total: totalItems }));
             }
             
             return { 
@@ -1377,7 +1552,7 @@ function (BaseView, loading, toast) {
             
             var elapsed = Date.now() - this.startTime.getTime();
             var elapsedEl = view.querySelector('#elapsedTime');
-            elapsedEl.textContent = t('progress.elapsed', { time: this.formatElapsed(elapsed) });
+            elapsedEl.textContent = t('ui.elapsedPrefix') + this.formatElapsed(elapsed);
         }
 
         fetchProgress(view, forceFullRender) {
@@ -1385,10 +1560,10 @@ function (BaseView, loading, toast) {
             
             return ApiClient.ajax({
                 type: 'GET',
-                url: ApiClient.getUrl('RatingSync/Progress'),
+                url: ApiClient.getUrl('RatingSync/Progress', { SummaryOnly: !forceFullRender }),
                 dataType: 'json'
             }).then(function(progress) {
-                return self.updateProgressUI(view, progress);
+                return self.updateProgressUI(view, progress, !forceFullRender);
             }).catch(function(err) {
                 console.error('Error fetching progress:', err);
                 return null;
@@ -1427,8 +1602,10 @@ function (BaseView, loading, toast) {
                 // Reset stats display
                 view.querySelector('#statProcessed').textContent = '0';
                 view.querySelector('#statUpdated').textContent = '0';
+                view.querySelector('#statUpdated').classList.remove('hasResults');
                 view.querySelector('#statSkipped').textContent = '0';
                 view.querySelector('#statErrors').textContent = '0';
+                view.querySelector('#statErrors').classList.remove('hasResults');
                 view.querySelector('#progressBarFill').style.width = '0%';
                 view.querySelector('#progressBarText').textContent = '0%';
                 view.querySelector('#currentItemBox').classList.add('hide');
@@ -1453,62 +1630,28 @@ function (BaseView, loading, toast) {
                     addedWithinDays = parseInt(addedWithinSelect.value || '0', 10) || 0;
                 }
                 
-                // Function to start the task
-                function startTask() {
-                    ApiClient.getScheduledTasks().then(function(tasks) {
-                        var task = tasks.find(function(t) { return t.Key === 'RatingSync'; });
-                        
-                        if (task) {
-                            if (task.State === 'Running') {
-                                self.setStatus(view, 'warning', t('ui.alreadyRunning'));
-                                self.stopRefresh(view);
-                                toast({ text: t('toast.alreadyRunning') });
-                                return;
-                            }
-                            ApiClient.startScheduledTask(task.Id).then(function() {
-                                self.startTime = new Date();
-                                self.startPolling(view, task.Id);
-                            }).catch(function(err) {
-                                self.setStatus(view, 'error', t('ui.failedToStart'));
-                                self.stopRefresh(view);
-                                toast({ text: t('toast.failedStart', { err: err }) });
-                            });
-                        } else {
-                            self.setStatus(view, 'error', t('ui.taskNotFound'));
-                            self.stopRefresh(view);
-                            toast({ text: t('toast.taskNotFound') });
-                        }
-                    });
-                }
-                
-                // If any selection is made, queue selected items first
-                if (libraryId || seriesId || seasonId || episodeId || movieId) {
-                    self.setStatus(view, 'running', t('ui.queuingSelected'));
-                    
-                    ApiClient.ajax({
-                        type: 'POST',
-                        url: ApiClient.getUrl('RatingSync/RunSelected'),
-                        data: JSON.stringify({
-                            LibraryId: libraryId || '',
-                            SeriesId: seriesId || '',
-                            SeasonId: seasonId || '',
-                            EpisodeId: episodeId || '',
-                            MovieId: movieId || '',
-                            AddedWithinDays: addedWithinDays || 0
-                        }),
-                        contentType: 'application/json'
-                    }).then(function() {
-                        startTask();
-                    }).catch(function(err) {
-                        console.error('Error queuing selected items:', err);
-                        self.setStatus(view, 'error', t('ui.queueFailed'));
-                        self.stopRefresh(view);
-                        toast({ text: t('toast.failedQueueSelected') });
-                    });
-                } else {
-                    // No selection - run full scan
-                    startTask();
-                }
+                var fullLibrary = view.querySelector('#scanScope').value === 'all';
+                if (fullLibrary) { libraryId = seriesId = seasonId = episodeId = movieId = ''; }
+                else if (!libraryId) { self.stopRefresh(view); self.setStatus(view, 'warning', t('ui.chooseLibrary')); return; }
+                self.launchScan(view, {
+                    FullLibrary: fullLibrary,
+                    LibraryId: libraryId || '', SeriesId: seriesId || '', SeasonId: seasonId || '',
+                    EpisodeId: episodeId || '', MovieId: movieId || '', AddedWithinDays: addedWithinDays || 0
+                });
+            });
+        }
+
+        launchScan(view, payload) {
+            var self = this;
+            return ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('RatingSync/Start'),
+                data: JSON.stringify(payload), contentType: 'application/json', dataType: 'json'
+            }).then(function(result) {
+                self.startTime = new Date();
+                self.startPolling(view, result.TaskId || result.taskId);
+            }).catch(function() {
+                self.setStatus(view, 'error', t('ui.couldNotStart'));
+                self.stopRefresh(view);
+                toast({ text: t('toast.scanNotStarted') });
             });
         }
 
@@ -1528,23 +1671,21 @@ function (BaseView, loading, toast) {
                 self.updateElapsedTime(view);
             }, 1000);
 
-            // Poll progress every 1.5 seconds
+            var polling = false;
             self.pollInterval = setInterval(function() {
+                if (polling) return;
+                polling = true;
                 self._pollTick++;
-                self.fetchProgress(view, false);
-                if (self._pollTick % 4 === 0) {
-                    self.updateApiCounters(view);
-                }
-                
-                ApiClient.getScheduledTask(taskId).then(function(task) {
-                    if (task.State === 'Idle') {
-                        self.fetchProgress(view, true).then(function(stats) {
-                            // Avoid finishing on a brief Idle race while progress is still running
-                            if (stats && stats.isRunning) return;
-                            self.finishRefresh(view, stats);
-                        });
-                    }
-                });
+                self.fetchProgress(view, self._pollTick % 4 === 0).then(function() {
+                    if (self._pollTick % 4 === 0) self.updateApiCounters(view);
+                    return ApiClient.getScheduledTask(taskId);
+                }).then(function(task) {
+                    if (task.State === 'Idle') return self.fetchProgress(view, true).then(function(stats) {
+                        if (stats && !stats.isRunning) self.finishRefresh(view, stats);
+                    });
+                }).catch(function() {
+                    self.setStatus(view, 'warning', t('ui.connectionInterrupted'));
+                }).then(function() { polling = false; });
             }, 1500);
         }
 
@@ -1634,8 +1775,10 @@ function (BaseView, loading, toast) {
             }).then(function() {
                 view.querySelector('#statProcessed').textContent = '0';
                 view.querySelector('#statUpdated').textContent = '0';
+                view.querySelector('#statUpdated').classList.remove('hasResults');
                 view.querySelector('#statSkipped').textContent = '0';
                 view.querySelector('#statErrors').textContent = '0';
+                view.querySelector('#statErrors').classList.remove('hasResults');
                 view.querySelector('#progressBarFill').style.width = '0%';
                 view.querySelector('#progressBarText').textContent = '0%';
                 view.querySelector('#elapsedTime').textContent = '';
@@ -1651,8 +1794,10 @@ function (BaseView, loading, toast) {
                 // Just clear locally if API fails
                 view.querySelector('#statProcessed').textContent = '0';
                 view.querySelector('#statUpdated').textContent = '0';
+                view.querySelector('#statUpdated').classList.remove('hasResults');
                 view.querySelector('#statSkipped').textContent = '0';
                 view.querySelector('#statErrors').textContent = '0';
+                view.querySelector('#statErrors').classList.remove('hasResults');
                 view.querySelector('#updatedList').innerHTML = '<li class="resultEmpty">' + t('list.noUpdated') + '</li>';
                 view.querySelector('#skippedList').innerHTML = '<li class="resultEmpty">' + t('list.noSkipped') + '</li>';
                 view.querySelector('#failureList').innerHTML = '<li class="resultEmpty">' + t('list.noFailures') + '</li>';
@@ -1700,6 +1845,8 @@ function (BaseView, loading, toast) {
             var self = this;
             var view = this.view;
 
+            // Translate the static markup once per resume. Dynamic content is
+            // localized at render time with t() / localizeDetail().
             translateDom(view);
 
             if (!self._uiBound) {
@@ -1707,6 +1854,18 @@ function (BaseView, loading, toast) {
                 self.bindTabNavigation(view);
                 self.bindResultTabs(view);
                 self.bindLibrarySelection(view);
+                view.querySelector('#scanScope').addEventListener('change', function() {
+                    var target = this.value === 'target';
+                    view.querySelector('#targetSelection').classList.toggle('hide', !target);
+                    view.querySelector('#scopeInfo').textContent = target ? t('ui.scopeInfoTarget') : t('ui.scopeInfoSaved');
+                });
+                view.querySelectorAll('[data-history-view]').forEach(function(button) {
+                    button.addEventListener('click', function() {
+                        view.querySelectorAll('[data-history-view]').forEach(function(b) { b.classList.toggle('active', b === button); });
+                        ['historyScansPanel','historyMissingPanel','historyItemsPanel'].forEach(function(id) { view.querySelector('#'+id).classList.toggle('hide', id !== button.dataset.historyView); });
+                    });
+                });
+                view.querySelector('#historyOutcome').addEventListener('change', function() { self.renderScanHistory(view); });
 
                 var form = view.querySelector('.imdbRefreshConfigForm');
                 if (form) {
@@ -1742,6 +1901,13 @@ function (BaseView, loading, toast) {
                 if (chkOmdbRateLimit) {
                     chkOmdbRateLimit.addEventListener('change', function() {
                         view.querySelector('#omdbLimitOptions').style.display = this.checked ? 'block' : 'none';
+                    });
+                }
+
+                var chkTieredRescan = view.querySelector('#chkTieredRescan');
+                if (chkTieredRescan) {
+                    chkTieredRescan.addEventListener('change', function() {
+                        view.querySelector('#tieredRescanOptions').style.display = this.checked ? 'block' : 'none';
                     });
                 }
 
@@ -1871,44 +2037,37 @@ function (BaseView, loading, toast) {
             }).then(function(sessions) {
                 self.scanHistorySessions = sessions || [];
 
+                self.renderScanHistory(view);
+            }).catch(function(err) {
+                console.error('Error loading scan history:', err);
+                container.innerHTML = '<p class="emptyText">' + t('history.error') + '</p>';
+            });
+        }
+
+        renderScanHistory(view) {
+            var self = this;
+            var container = view.querySelector('#sessionList');
+            var sessions = this.scanHistorySessions || [];
                 if (!sessions || sessions.length === 0) {
                     container.innerHTML = '<p class="emptyText">' + t('history.empty') + '</p>';
                     return;
                 }
                 
-                var html = '';
+                var filter = view.querySelector('#historyOutcome').value;
+                var html = '<table class="scanTable"><thead><tr><th>' + t('history.started') + '</th><th>' + t('history.result') + '</th><th>' + t('history.changes') + '</th><th>' + t('history.duration') + '</th><th></th></tr></thead><tbody>';
+                var matches = 0;
                 sessions.forEach(function(session, idx) {
-                    var startDate = new Date(session.StartTime);
-                    var endDate = session.EndTime ? new Date(session.EndTime) : null;
-                    var duration = endDate ? self.formatElapsed(endDate - startDate) : t('ui.inProgressDots');
-                    
-                    var cardClass = 'sessionCard';
-                    if (session.WasCancelled) cardClass += ' cancelled';
-                    if (session.ErrorItems > 0) cardClass += ' hasErrors';
-                    
-                    html += '<div class="' + cardClass + '" data-index="' + idx + '" role="button" tabindex="0">';
-                    html += '<div class="sessionHeader">';
-                    html += '<div class="sessionHeaderLeft">';
-                    html += '<div class="sessionDate">' + self.formatDateTime(startDate) + '</div>';
-                    html += '</div>';
-                    html += '<div class="sessionHeaderRight">';
-                    html += '<span class="sessionDuration">' + duration + (session.WasCancelled ? t('history.cancelledSuffix') : '') + '</span>';
-                    if (session.SessionId) {
-                        html += '<button type="button" class="sessionDeleteBtn" data-action="delete-scan" data-session-id="' + self.escapeHtml(session.SessionId) + '">' + t('history.delete') + '</button>';
-                    }
-                    html += '</div>';
-                    html += '</div>';
-                    html += '<div class="sessionStats">';
-                    html += '<span class="sessionStat"><span class="label">' + t('history.total') + '</span><span class="value">' + session.TotalItems + '</span></span>';
-                    html += '<span class="sessionStat updated"><span class="label">' + t('history.updated') + '</span><span class="value">' + session.UpdatedItems + '</span></span>';
-                    html += '<span class="sessionStat skipped"><span class="label">' + t('history.skipped') + '</span><span class="value">' + session.SkippedItems + '</span></span>';
-                    html += '<span class="sessionStat errors"><span class="label">' + t('history.errors') + '</span><span class="value">' + session.ErrorItems + '</span></span>';
-                    html += '</div>';
-
-                    html += '<div class="sessionCta"><span>' + t('history.viewReport') + '</span></div>';
-                    html += '</div>';
+                    if (filter === 'updated' && !session.UpdatedItems || filter === 'errors' && !session.ErrorItems || filter === 'cancelled' && !session.WasCancelled) return;
+                    matches++;
+                    var start = new Date(session.StartTime);
+                    var duration = session.EndTime ? self.formatElapsed(new Date(session.EndTime)-start) : t('history.running');
+                    var outcome = session.WasCancelled ? t('history.stopped') : session.ErrorItems ? t('history.needsAttention') : !session.EndTime ? t('history.running') : t('history.complete');
+                    var changes = session.UpdatedItems ? session.UpdatedItems + ' ' + t('history.updatedUnit') : t('history.noChanges');
+                    if (session.ErrorItems) changes += ' · ' + session.ErrorItems + ' ' + t('history.errorsUnit');
+                    html += '<tr class="sessionCard" data-index="'+idx+'" tabindex="0"><td>'+self.escapeHtml(self.formatDateTime(start))+'<small>'+self.escapeHtml(scopeLabel(session.Scope))+'</small></td><td class="outcome-'+(session.ErrorItems ? 'error' : !session.EndTime ? 'running' : session.WasCancelled ? 'stopped' : 'complete')+'">'+outcome+'</td><td>'+changes+'<small>'+session.ProcessedItems+' '+t('history.processedUnit')+(session.SkippedItems ? ' · '+session.SkippedItems+' '+t('history.skippedUnit') : '')+'</small></td><td>'+duration+'</td><td><button type="button">' + t('history.view') + '</button></td></tr>';
                 });
-                
+                html += '</tbody></table>';
+                if (!matches) html = '<p class="emptyText">' + t('history.noMatch') + '</p>';
                 container.innerHTML = html;
 
                 // Click-to-open report (event delegation)
@@ -1939,10 +2098,6 @@ function (BaseView, loading, toast) {
                     if (isNaN(index) || !self.scanHistorySessions || !self.scanHistorySessions[index]) return;
                     self.openScanReport(view, self.scanHistorySessions[index]);
                 };
-            }).catch(function(err) {
-                console.error('Error loading scan history:', err);
-                container.innerHTML = '<p class="emptyText">' + t('history.error') + '</p>';
-            });
         }
 
         openScanReport(view, session) {
@@ -1953,7 +2108,7 @@ function (BaseView, loading, toast) {
             this.activeScanReportSession = session || null;
             this.activeScanReport = null;
             this.scanReportState = {
-                activeTab: 'overview',
+                activeTab: session && session.ErrorItems ? 'errors' : session && session.UpdatedItems ? 'updated' : 'skipped',
                 filterText: '',
                 pageSize: 100,
                 page: { updated: 1, skipped: 1, errors: 1 }
@@ -1962,7 +2117,7 @@ function (BaseView, loading, toast) {
             var title = view.querySelector('#scanReportTitle');
             if (title) {
                 var startDate = session && session.StartTime ? new Date(session.StartTime) : null;
-                title.textContent = startDate ? t('report.titleWithDate', { date: this.formatDateTime(startDate) }) : t('report.title');
+                title.textContent = startDate ? (t('report.titleWithDate', { date: this.formatDateTime(startDate) })) : t('report.title');
             }
 
             var body = view.querySelector('#scanReportBody');
@@ -2091,13 +2246,13 @@ function (BaseView, loading, toast) {
                 : src.TotalItems;
 
             var updatedEntries = report
-                ? (report.Updated || []).map(function(e) { return { name: e.Name, detail: e.Detail }; })
+                ? (report.Updated || []).map(function(e) { return { name: e.Name, detail: e.Detail, changes: e.Changes || [] }; })
                 : self.objectToPairs(src.UpdatedDetails);
             var skippedEntries = report
-                ? (report.Skipped || []).map(function(e) { return { name: e.Name, detail: e.Detail }; })
+                ? (report.Skipped || []).map(function(e) { return { name: e.Name, detail: e.Detail, changes: e.Changes || [] }; })
                 : self.objectToPairs(src.SkippedDetails);
             var errorEntries = report
-                ? (report.Errors || []).map(function(e) { return { name: e.Name, detail: e.Detail }; })
+                ? (report.Errors || []).map(function(e) { return { name: e.Name, detail: e.Detail, changes: e.Changes || [] }; })
                 : self.objectToPairs(src.FailureDetails);
 
             if ((!updatedEntries || updatedEntries.length === 0) && src.UpdatedItemNames && src.UpdatedItemNames.length > 0) {
@@ -2120,27 +2275,26 @@ function (BaseView, loading, toast) {
             }
 
             html += '<div class="reportMeta">';
-            html += self.reportMetaBox('started', startDate ? self.formatDateTime(startDate) : '');
-            html += self.reportMetaBox('finished', endDate ? self.formatDateTime(endDate) : (src.WasCancelled ? t('ui.cancelled') : t('ui.inProgress')));
-            html += self.reportMetaBox('duration', duration || (endDate ? '' : t('ui.inProgress')));
+            html += self.reportMetaBox('result', statusText);
             html += self.reportMetaBox('processed', processed + ' / ' + src.TotalItems);
-            html += self.reportMetaBox('updated', String(src.UpdatedItems || 0));
-            html += self.reportMetaBox('skipped', String(src.SkippedItems || 0));
-            html += self.reportMetaBox('errors', String(src.ErrorItems || 0));
+            html += self.reportMetaBox('duration', duration);
+            html += '</div>';
+            html += '<details class="scanTechnical"><summary>' + t('report.scanDetails') + '</summary><div class="reportMeta">';
+            html += self.reportMetaBox('started', startDate ? self.formatDateTime(startDate) : '');
+            html += self.reportMetaBox('finished', endDate ? self.formatDateTime(endDate) : '');
             html += self.reportMetaBox('omdbCalls', String(src.OmdbRequests || 0));
             html += self.reportMetaBox('mdbCalls', String(src.MdbListRequests || 0));
             html += self.reportMetaBox('imdbFallback', String(src.ImdbScrapeRequests || 0));
-            html += self.reportMetaBox('status', statusText);
-            html += '</div>';
+            html += '</div></details>';
 
             html += '<div class="reportFilterRow">';
             html += '<input id="scanReportFilter" type="text" placeholder="' + self.escapeHtml(t('report.searchPlaceholder')) + '" value="' + self.escapeHtml(state.filterText || '') + '" />';
             html += '<select id="scanReportPageSize" style="padding:0.55em 0.7em;border-radius:6px;border:1px solid rgba(255,255,255,0.08);background:rgba(0,0,0,0.35);color:rgba(255,255,255,0.9)">'
-                + '<option value="50"' + (pageSize === 50 ? ' selected' : '') + '>' + t('report.perPage', { n: 50 }) + '</option>'
-                + '<option value="100"' + (pageSize === 100 ? ' selected' : '') + '>' + t('report.perPage', { n: 100 }) + '</option>'
-                + '<option value="250"' + (pageSize === 250 ? ' selected' : '') + '>' + t('report.perPage', { n: 250 }) + '</option>'
+                + '<option value="50"' + (pageSize === 50 ? ' selected' : '') + '>' + self.escapeHtml(t('report.perPage', { n: 50 })) + '</option>'
+                + '<option value="100"' + (pageSize === 100 ? ' selected' : '') + '>' + self.escapeHtml(t('report.perPage', { n: 100 })) + '</option>'
+                + '<option value="250"' + (pageSize === 250 ? ' selected' : '') + '>' + self.escapeHtml(t('report.perPage', { n: 250 })) + '</option>'
                 + '</select>';
-            html += '<button type="button" class="reportSmallBtn" data-action="download-json"' + (report ? '' : ' disabled') + '>' + t('report.downloadJson') + '</button>';
+            html += '<button type="button" class="reportSmallBtn" data-action="download-json"' + (report ? '' : ' disabled') + '>' + self.escapeHtml(t('report.downloadJson')) + '</button>';
             html += '</div>';
 
             html += self.renderReportTabs(state.activeTab, updatedEntries.length, skippedEntries.length, errorEntries.length);
@@ -2194,22 +2348,22 @@ function (BaseView, loading, toast) {
             var html = '';
 
             html += '<div class="reportSection">';
-            html += '<h4 class="reportH tone-updated">' + t('report.byType') + '</h4>';
+            html += '<h4 class="reportH tone-updated">' + self.escapeHtml(t('report.byType')) + '</h4>';
             html += self.renderCountChips(summary.updatedByType, 'updated');
             html += '</div>';
 
             html += '<div class="reportSection">';
-            html += '<h4 class="reportH tone-updated">' + t('report.bySource') + '</h4>';
+            html += '<h4 class="reportH tone-updated">' + self.escapeHtml(t('report.bySource')) + '</h4>';
             html += self.renderCountChips(summary.updatedBySource, 'updated');
             html += '</div>';
 
             html += '<div class="reportSection">';
-            html += '<h4 class="reportH tone-skipped">' + t('report.topSkip') + '</h4>';
+            html += '<h4 class="reportH tone-skipped">' + self.escapeHtml(t('report.topSkip')) + '</h4>';
             html += self.renderCountChips(summary.skippedByReason, 'skipped');
             html += '</div>';
 
             html += '<div class="reportSection">';
-            html += '<h4 class="reportH tone-errors">' + t('report.topErrors') + '</h4>';
+            html += '<h4 class="reportH tone-errors">' + self.escapeHtml(t('report.topErrors')) + '</h4>';
             html += self.renderCountChips(summary.errorsByMessage, 'errors');
             html += '</div>';
 
@@ -2219,13 +2373,13 @@ function (BaseView, loading, toast) {
         renderCountChips(countsObj, tone) {
             var entries = Object.keys(countsObj || {}).map(function(k) { return { key: k, count: countsObj[k] }; });
             entries.sort(function(a, b) { return b.count - a.count; });
-            if (entries.length === 0) return '<p class="reportNote">' + t('report.noDataChip') + '</p>';
+            if (entries.length === 0) return '<p class="reportNote">' + this.escapeHtml(t('report.noDataChip')) + '</p>';
 
             var html = '<div style="display:flex;flex-wrap:wrap;gap:0.5em">';
             entries.slice(0, 20).forEach(function(e) {
                 html += '<span class="reportChip ' + this.escapeHtml('tone-' + (tone || 'neutral')) + '">' 
                     + '<span class="reportChipCount">' + e.count + '</span>'
-                    + '<span class="reportChipText">' + this.escapeHtml(e.key) + '</span>'
+                    + '<span class="reportChipText">' + this.escapeHtml(localizeDetail(e.key)) + '</span>'
                     + '</span>';
             }.bind(this));
             html += '</div>';
@@ -2256,7 +2410,7 @@ function (BaseView, loading, toast) {
                 var d = e && e.detail ? e.detail : '';
                 var hasImdb = d.indexOf('IMDb community') >= 0 || d.indexOf('IMDb:') >= 0;
                 var hasRt = d.indexOf('RT critic') >= 0 || d.indexOf('RT:') >= 0;
-                var type = hasImdb && hasRt ? t('report.typeBoth') : (hasImdb ? t('report.typeImdb') : (hasRt ? t('report.typeRt') : t('report.typeOther')));
+                var type = hasImdb && hasRt ? 'IMDb + RT' : (hasImdb ? t('report.typeImdb') : (hasRt ? t('report.typeRt') : t('report.typeOther')));
                 inc(updatedByType, type);
 
                 var src = self.extractSourceLabel(d);
@@ -2305,15 +2459,15 @@ function (BaseView, loading, toast) {
             html += '<h4>' + this.escapeHtml(title) + '</h4>';
 
             html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:0.75em;flex-wrap:wrap;margin:0.25em 0 0.75em 0">';
-            html += '<div class="reportNote" style="margin:0">' + t('report.showing', { from: (total === 0 ? 0 : (start + 1)), to: Math.min(total, start + pageSize), total: total }) + '</div>';
+            html += '<div class="reportNote" style="margin:0">' + this.escapeHtml(t('report.showing', { from: (total === 0 ? 0 : (start + 1)), to: Math.min(total, start + pageSize), total: total })) + '</div>';
             html += '<div style="display:flex;gap:0.5em">'
-                + '<button type="button" class="reportSmallBtn" data-action="' + prevAction + '"' + (page <= 1 ? ' disabled' : '') + '>' + t('report.prev') + '</button>'
-                + '<button type="button" class="reportSmallBtn" data-action="' + nextAction + '"' + (page >= pages ? ' disabled' : '') + '>' + t('report.next') + '</button>'
+                + '<button type="button" class="reportSmallBtn" data-action="' + prevAction + '"' + (page <= 1 ? ' disabled' : '') + '>' + this.escapeHtml(t('report.prev')) + '</button>'
+                + '<button type="button" class="reportSmallBtn" data-action="' + nextAction + '"' + (page >= pages ? ' disabled' : '') + '>' + this.escapeHtml(t('report.next')) + '</button>'
                 + '</div>';
             html += '</div>';
 
             if (slice.length === 0) {
-                html += '<p class="reportNote">' + t('report.noItems') + '</p>';
+                html += '<p class="reportNote">' + this.escapeHtml(t('report.noItems')) + '</p>';
                 html += '</div>';
                 return html;
             }
@@ -2321,11 +2475,19 @@ function (BaseView, loading, toast) {
             html += '<ul class="reportList">';
             slice.forEach(function(item) {
                 var name = item && item.name ? item.name : '';
-                var detail = item && item.detail ? item.detail : '';
-                html += '<li class="reportListItem ' + typeClass + '">' +
-                    '<div class="reportItemName">' + this.escapeHtml(name) + '</div>' +
-                    '<div class="reportItemDetail">' + this.escapeHtml(localizeDetail(detail)) + '</div>' +
-                    '</li>';
+                var rawDetail = item && item.detail ? item.detail : '';
+                var detail = localizeDetail(rawDetail);
+                html += '<li class="reportListItem ' + typeClass + '"><div class="reportItemName">' + this.escapeHtml(name) + '</div><div class="reportItemDetail">';
+                if (item.changes && item.changes.length) {
+                    html += '<div class="ratingChange resultColumns"><span>' + this.escapeHtml(t('report.colRating')) + '</span><span>' + this.escapeHtml(t('report.colBefore')) + '</span><span>' + this.escapeHtml(t('report.colAfter')) + '</span><span>' + this.escapeHtml(t('report.colSource')) + '</span></div>';
+                    item.changes.forEach(function(change) {
+                        html += '<div class="ratingChange"><span>'+this.escapeHtml(localizeDetail(change.Rating))+'</span><span>'+this.escapeHtml(change.Before == null ? '—' : change.Before)+'</span><span>'+this.escapeHtml(change.After)+'</span><span>'+this.escapeHtml(localizeDetail(change.Source))+'</span></div>';
+                    }, this);
+                } else if (typeClass === 'skipped') {
+                    html += /already matches|already current/i.test(rawDetail) ? t('list.alreadyCurrent') : /missing.*(id|index|metadata)/i.test(rawDetail) ? t('list.missingMetadata') : t('list.ratingUnavailable');
+                    html += '<details><summary>' + this.escapeHtml(t('list.details')) + '</summary><p>'+this.escapeHtml(detail)+'</p></details>';
+                } else html += this.escapeHtml(detail);
+                html += '</div></li>';
             }.bind(this));
             html += '</ul>';
             html += '</div>';
@@ -2412,7 +2574,7 @@ function (BaseView, loading, toast) {
                     var name = e && (e.Name || e.name) ? (e.Name || e.name) : '';
                     var detail = e && (e.Detail || e.detail) ? (e.Detail || e.detail) : '';
                     var line = '- ' + name;
-                    if (detail) line += ' — ' + localizeDetail(detail);
+                    if (detail) line += ' — ' + detail;
                     lines.push(line);
                 });
                 lines.push('');
@@ -2532,7 +2694,7 @@ function (BaseView, loading, toast) {
             });
 
             html += '</tbody></table>';
-            html += '<p style="padding: 0.75em 1em; font-size: 0.85em; color: rgba(255,255,255,0.5);">' + t('missing.showing', { n: filtered.length }) + '</p>';
+            html += '<p style="padding: 0.75em 1em; font-size: 0.85em; color: rgba(255,255,255,0.5);">' + self.escapeHtml(t('missing.showing', { n: filtered.length })) + '</p>';
 
             container.innerHTML = html;
 
@@ -2585,11 +2747,13 @@ function (BaseView, loading, toast) {
             view.querySelector('#progressSection').classList.remove('hide');
             view.querySelector('#elapsedTime').textContent = '';
             view.querySelector('#etaBox').classList.add('hide');
-            self.setStatus(view, 'running', t('ui.queuingSelectedOne'));
+            self.setStatus(view, 'running', t('ui.queuingSelected'));
             view.querySelector('#statProcessed').textContent = '0';
             view.querySelector('#statUpdated').textContent = '0';
+                view.querySelector('#statUpdated').classList.remove('hasResults');
             view.querySelector('#statSkipped').textContent = '0';
             view.querySelector('#statErrors').textContent = '0';
+                view.querySelector('#statErrors').classList.remove('hasResults');
             view.querySelector('#progressBarFill').style.width = '0%';
             view.querySelector('#progressBarText').textContent = '0%';
             view.querySelector('#currentItemBox').classList.add('hide');
@@ -2615,45 +2779,13 @@ function (BaseView, loading, toast) {
             } else if (selected.Type === 'Episode') {
                 payload.EpisodeId = selected.Id;
             } else {
-                toast({ text: t('toast.unsupportedType', { type: typeLabel(selected.Type) }) });
+                toast({ text: t('ui.unsupportedTypePrefix') + selected.Type });
                 self.setStatus(view, 'error', t('ui.unsupportedType'));
                 self.stopRefresh(view);
                 return;
             }
 
-            function startTask() {
-                ApiClient.getScheduledTasks().then(function(tasks) {
-                    var task = tasks.find(function(t) { return t.Key === 'RatingSync'; });
-                    if (task) {
-                        ApiClient.startScheduledTask(task.Id).then(function() {
-                            self.startTime = new Date();
-                            self.startPolling(view, task.Id);
-                        }).catch(function(err) {
-                            self.setStatus(view, 'error', t('ui.failedToStart'));
-                            self.stopRefresh(view);
-                            toast({ text: t('toast.failedStart', { err: err }) });
-                        });
-                    } else {
-                        self.setStatus(view, 'error', t('ui.taskNotFound'));
-                        self.stopRefresh(view);
-                        toast({ text: t('toast.taskNotFound') });
-                    }
-                });
-            }
-
-            ApiClient.ajax({
-                type: 'POST',
-                url: ApiClient.getUrl('RatingSync/RunSelected'),
-                data: JSON.stringify(payload),
-                contentType: 'application/json'
-            }).then(function() {
-                startTask();
-            }).catch(function(err) {
-                console.error('Error queuing selected item:', err);
-                self.setStatus(view, 'error', t('ui.queueFailedOne'));
-                self.stopRefresh(view);
-                toast({ text: t('toast.failedQueueOne', { err: err }) });
-            });
+            self.launchScan(view, payload);
         }
 
         searchItemHistory(view) {
@@ -2669,14 +2801,14 @@ function (BaseView, loading, toast) {
                 dataType: 'json'
             }).then(function(items) {
                 if (!items || items.length === 0) {
-                    container.innerHTML = '<p class="emptyText">' + t('itemhist.none', { q: self.escapeHtml(search) }) + '</p>';
+                    container.innerHTML = '<p class="emptyText">' + self.escapeHtml(t('itemhist.none', { q: search })) + '</p>';
                     return;
                 }
                 
                 var html = '<table class="dataTable">';
                 html += '<thead><tr>';
-                html += '<th>' + t('missing.colName') + '</th>';
-                html += '<th>' + t('missing.colType') + '</th>';
+                html += '<th>' + t('itemhist.colName') + '</th>';
+                html += '<th>' + t('itemhist.colType') + '</th>';
                 html += '<th>' + t('itemhist.colLastScanned') + '</th>';
                 html += '<th>' + t('itemhist.colCurrent') + '</th>';
                 html += '<th>' + t('itemhist.colLastChange') + '</th>';
@@ -2694,7 +2826,7 @@ function (BaseView, loading, toast) {
                     html += '<td><span class="type-badge ' + typeClass + '">' + self.escapeHtml(typeLabel(item.Type)) + '</span></td>';
                     html += '<td>' + lastScanned + '</td>';
                     html += '<td>' + rating + critic + '</td>';
-                    html += '<td>' + (item.LastChange ? self.escapeHtml(localizeDetail(item.LastChange)) : '—') + '</td>';
+                    html += '<td>' + (item.LastChange ? self.escapeHtml(item.LastChange) : '—') + '</td>';
                     html += '</tr>';
                 });
                 

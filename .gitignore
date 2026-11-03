@@ -25,3 +25,7 @@ Thumbs.db
 
 ## Local AI workspace data
 .workbuddy-ai/
+
+# Generated UI preview and release bundles
+preview/
+artifacts/

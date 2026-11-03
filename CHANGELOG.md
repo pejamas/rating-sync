@@ -1,3 +1,32 @@
+## [1.2.2]
+
+- The plugin now targets .NET Standard 2.0, as required by the Emby plugin catalog (previously .NET Framework 4.6.2). No feature changes.
+
+## [1.2.1]
+
+- Replaced the placeholder plugin ID with a unique GUID (`1770753c-43e9-4454-9782-2c3b44ac06ce`) in preparation for the Emby plugin catalog. Settings and scan history are kept.
+## [1.2.0]
+
+- Added optional tiered rescanning: items released within a configurable age (default 30 days) use a shorter rescan interval (default 3 days), with an optional cap on recent-tier rescans before an item graduates to the standard interval.
+- Recent-tier rescans are counted per item in scan history; items without a release date always use the standard interval.
+- Scan logs report how many items are on the recent interval when tiered rescanning is enabled.
+- New vector logo (`images/logo.svg`) and a sharper plugin thumbnail (`images/logo.png`).
+- Existing settings and history remain compatible; tiered rescanning is off by default.
+
+## [1.1.0]
+
+- Added an admin-only single-request scan API returning a task ID and job ID; preserved the legacy selection route for older players.
+- Expired or invalid targeted scans cannot silently become full-library scans; pending/running requests reject conflicting starts.
+- Added an IMDb episode disk index with negative caching, generation invalidation and bounded retained indexes.
+- Removed per-item local delays; provider requests are paced independently and checked against daily quotas before sending.
+- Movie/series lookups use the correct MDBList endpoint. Critic-only gaps are included in missing-rating scans.
+- Added cancellation-aware downloads/requests, dataset refresh failure backoff, atomic history/report writes and less frequent checkpoints.
+- Provider failures are distinguished from unchanged ratings, with a 15-minute retry cooldown rather than the normal rescan interval.
+- Added structured before/after rating changes, field-specific sources and explicit live result ordering.
+- Lighter charcoal Arloes companion interface: explicit scan scope, compact results, scan filters, separate missing-rating and item-lookup views, expandable explanations and no emojis.
+- Live results retain completion order, open details and scroll position while polling. Summary polls omit large detail payloads.
+- Added backend and browser regression checks. Existing settings/history remain compatible.
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
