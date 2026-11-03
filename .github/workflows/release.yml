@@ -1,15 +1,110 @@
 name: Release
 
+# Two ways in:
+#   1. Push a tag (v1.2.3)            -> build and publish that version.
+#   2. Bump <VersionPrefix> in RatingSync.csproj on main
+#      (or run this workflow manually) -> publish the version in the csproj,
+#      creating the tag automatically, but only if it was not released yet.
+
 on:
   push:
     tags:
       - 'v*'
+    branches:
+      - main
+  workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  check:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      prefix: ${{ steps.ver.outputs.prefix }}
+      suffix: ${{ steps.ver.outputs.suffix }}
+      tag: ${{ steps.ver.outputs.tag }}
+      publish: ${{ steps.ver.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute version
+        id: ver
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $explicit = ("${{ github.ref_type }}" -eq "tag") -or ("${{ github.event_name }}" -eq "workflow_dispatch")
+
+          if ("${{ github.ref_type }}" -eq "tag") {
+            $tag = "${{ github.ref_name }}"
+            $version = $tag.TrimStart('v')
+          } else {
+            [xml]$csproj = Get-Content "RatingSync.csproj"
+            $prefix = @($csproj.Project.PropertyGroup.VersionPrefix | Where-Object { $_ })[0]
+            $suffix = @($csproj.Project.PropertyGroup.VersionSuffix | Where-Object { $_ })[0]
+            if ([string]::IsNullOrWhiteSpace($prefix)) { throw "No <VersionPrefix> in RatingSync.csproj" }
+            $version = if ([string]::IsNullOrWhiteSpace($suffix)) { $prefix } else { "$prefix-$suffix" }
+            $tag = "v$version"
+          }
+
+          # Split SemVer into prefix and optional prerelease suffix.
+          # Example: 0.1.0-beta.1 => prefix=0.1.0, suffix=beta.1
+          $prefixOut = $version
+          $suffixOut = ""
+          if ($version -match '^(?<p>[^-]+)-(?<s>.+)$') {
+            $prefixOut = $Matches['p']
+            $suffixOut = $Matches['s']
+          }
+
+          # A plain push to main only releases when the version actually changed,
+          # so unrelated pushes never create a tag behind your back.
+          $versionChanged = $true
+          $before = "${{ github.event.before }}"
+          if (-not $explicit -and $before -match '^[0-9a-f]{40}$' -and $before -notmatch '^0{40}$') {
+            $previous = $null
+            $raw = git show "${before}:RatingSync.csproj" 2>$null
+            if ($LASTEXITCODE -eq 0 -and $raw) {
+              [xml]$oldCsproj = ($raw -join "`n")
+              $oldPrefix = @($oldCsproj.Project.PropertyGroup.VersionPrefix | Where-Object { $_ })[0]
+              $oldSuffix = @($oldCsproj.Project.PropertyGroup.VersionSuffix | Where-Object { $_ })[0]
+              $previous = if ([string]::IsNullOrWhiteSpace($oldSuffix)) { $oldPrefix } else { "$oldPrefix-$oldSuffix" }
+            }
+            if ($previous -and $previous -eq $version) {
+              Write-Host "Version unchanged ($version); skipping release."
+              $versionChanged = $false
+            }
+          }
+
+          $publish = "false"
+          if ($versionChanged) {
+            gh release view $tag --json tagName 2>$null | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host "Release $tag already exists; nothing to do."
+            } else {
+              Write-Host "Release $tag does not exist yet; it will be built."
+              $publish = "true"
+            }
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "prefix=$prefixOut" >> $env:GITHUB_OUTPUT
+          "suffix=$suffixOut" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "publish=$publish" >> $env:GITHUB_OUTPUT
+
   build-and-release:
+    name: Build and publish
+    needs: check
+    if: needs.check.outputs.publish == 'true'
     runs-on: windows-latest
 
     steps:
@@ -20,34 +115,21 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Compute version
-        id: ver
-        shell: pwsh
-        run: |
-          $tag = "${{ github.ref_name }}"
-          $version = $tag.TrimStart('v')
-
-          # Split SemVer into prefix and optional prerelease suffix.
-          # Example: 0.1.0-beta.1 => prefix=0.1.0, suffix=beta.1
-          $prefix = $version
-          $suffix = ""
-          if ($version -match '^(?<p>[^-]+)-(?<s>.+)$') {
-            $prefix = $Matches['p']
-            $suffix = $Matches['s']
-          }
-
-          "version=$version" >> $env:GITHUB_OUTPUT
-          "prefix=$prefix" >> $env:GITHUB_OUTPUT
-          "suffix=$suffix" >> $env:GITHUB_OUTPUT
-          "tag=$tag" >> $env:GITHUB_OUTPUT
-
       - name: Restore
         run: dotnet restore
 
       - name: Build (Release)
         shell: pwsh
         run: |
-          dotnet build -c Release --no-restore -p:VersionPrefix="${{ steps.ver.outputs.prefix }}" -p:VersionSuffix="${{ steps.ver.outputs.suffix }}"
+          dotnet build -c Release --no-restore -p:VersionPrefix="${{ needs.check.outputs.prefix }}" -p:VersionSuffix="${{ needs.check.outputs.suffix }}"
+
+      - name: Regression checks
+        shell: pwsh
+        run: |
+          dotnet build tests/RatingSync.Tests.csproj -c Release
+          & ./tests/bin/Release/net462/RatingSync.Tests.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check Configuration/configPage.js
 
       - name: Package
         shell: pwsh
@@ -55,14 +137,14 @@ jobs:
           $outDir = Join-Path $PWD "bin\Release"
           $dll = Join-Path $outDir "RatingSync.dll"
           if (!(Test-Path $dll)) { throw "Missing build output: $dll" }
-          $zip = Join-Path $PWD ("RatingSync-" + "${{ steps.ver.outputs.tag }}" + ".zip")
+          $zip = Join-Path $PWD ("RatingSync-" + "${{ needs.check.outputs.tag }}" + ".zip")
           if (Test-Path $zip) { Remove-Item $zip -Force }
           Compress-Archive -Path $dll -DestinationPath $zip
 
       - name: Generate release notes
         shell: pwsh
         run: |
-          $version = "${{ steps.ver.outputs.version }}"
+          $version = "${{ needs.check.outputs.version }}"
           $isPrerelease = $version.Contains('-')
 
           # Release body = only the bullet list under ## [version] in CHANGELOG.md (no boilerplate).
@@ -102,10 +184,10 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: Rating Sync ${{ steps.ver.outputs.tag }}
-          tag_name: ${{ steps.ver.outputs.tag }}
-          prerelease: ${{ contains(steps.ver.outputs.version, '-') }}
+          name: Rating Sync ${{ needs.check.outputs.tag }}
+          tag_name: ${{ needs.check.outputs.tag }}
+          prerelease: ${{ contains(needs.check.outputs.version, '-') }}
           body_path: release-notes.md
           files: |
             bin/Release/RatingSync.dll
-            RatingSync-${{ steps.ver.outputs.tag }}.zip
+            RatingSync-${{ needs.check.outputs.tag }}.zip

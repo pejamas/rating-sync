@@ -5,33 +5,41 @@
 - You have push access to the GitHub repo.
 - GitHub Actions is enabled.
 
-## Steps
+## Recommended: bump the version and let CI publish
 
-1. Decide the next version using SemVer (`MAJOR.MINOR.PATCH`).
-2. Update version in `RatingSync.csproj`.
-3. Update `CHANGELOG.md`.
-4. Commit.
-5. Create and push a tag:
+```powershell
+./tools/bump-version.ps1 1.3.0            # or 1.3.0-beta.1
+```
+
+The script updates `<VersionPrefix>` / `<VersionSuffix>` in `RatingSync.csproj`,
+adds a `## [1.3.0]` section to `CHANGELOG.md` if it is missing, commits, and
+pushes to `main`.
+
+Pushing the csproj change triggers the **Release** workflow, which:
+
+1. reads the version from `RatingSync.csproj` and derives the tag (`v1.3.0`);
+2. skips the run when that version already has a release;
+3. builds in Release, runs the backend regression checks and `node --check`;
+4. publishes a GitHub Release (creating the tag) with `RatingSync.dll` and
+   `RatingSync-v1.3.0.zip`, using the `## [1.3.0]` section as release notes.
+
+Edit the generated CHANGELOG section before pushing if you want real notes —
+the workflow reads it at build time.
+
+## Manual tag
+
+Tags still work, for re-releases or releases cut from a branch:
 
 ```powershell
 git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-### Beta / prerelease tags
-
-For beta builds, use a SemVer prerelease tag:
-
-```powershell
-git tag vX.Y.Z-beta.1
-git push origin vX.Y.Z-beta.1
-```
-
-GitHub Actions will build and publish a GitHub Release with:
-- `RatingSync.dll`
-- `RatingSync-vX.Y.Z.zip`
+Prerelease tags (`vX.Y.Z-beta.1`) are published as GitHub prereleases.
 
 ## Notes
 
 - The workflow uses the tag name as the version. Use tags like `v1.2.3`.
+- A push to `main` that does not change the version runs only the cheap
+  `Resolve version` job and stops.
 - `bin/` and `obj/` are ignored and should not be committed.

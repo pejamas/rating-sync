@@ -621,6 +621,16 @@ function (BaseView, loading, toast) {
         ['...', '…']
     ];
 
+    // Backend delete-scan result codes -> STRINGS keys. The backend keeps
+    // returning an English Message for older clients; new clients use the code.
+    var DEL_KEYS = {
+        missingSessionId: 'del.missingSessionId',
+        notFound: 'del.notFound',
+        inProgress: 'del.inProgress',
+        deleted: 'del.deleted',
+        failed: 'del.failed'
+    };
+
     function detectLang() {
         if (_lang) return _lang;
         var raw = '';
@@ -852,7 +862,9 @@ function (BaseView, loading, toast) {
                     }
                     self.loadScanHistory(view);
                 } else {
-                    toast((res && res.Message) ? localizeDetail(res.Message) : t('toast.deleteFailed'));
+                    // Prefer the stable result code; fall back to the raw message.
+                    var delKey = res && res.Code ? DEL_KEYS[res.Code] : null;
+                    toast(delKey ? t(delKey) : ((res && res.Message) ? localizeDetail(res.Message) : t('toast.deleteFailed')));
                 }
             }).catch(function() {
                 toast(t('toast.deleteFailed'));
